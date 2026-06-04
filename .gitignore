@@ -1,0 +1,7 @@
+# VS缓存全部忽略
+.vs/
+bin/
+obj/
+*.exe
+*.pdb
+*.suo
