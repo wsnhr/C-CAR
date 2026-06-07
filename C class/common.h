@@ -35,4 +35,26 @@ typedef struct {
     char current_user[20];  // 当前登录的用户名
 } AppContext;
 
+// ---------- 车辆管理函数原型 ----------
+// 初始化应用上下文
+void init_app(AppContext* ctx);
+
+// 添加车辆：成功返回0，失败返回-1（已存在或已满或参数错误）
+int add_car(AppContext* ctx, const char* plate, const char* brand, const char* model, const char* owner);
+
+// 删除车辆（按车牌号）：成功返回0，失败返回-1
+int remove_car(AppContext* ctx, const char* plate);
+
+// 查找车辆索引，找不到返回-1
+int find_car_index(const AppContext* ctx, const char* plate);
+
+// 查找车辆指针，找不到返回NULL
+Car* find_car(AppContext* ctx, const char* plate);
+
+// 修改车辆信息（按车牌号）：成功返回0，失败返回-1
+int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const char* new_model, const char* new_owner);
+
+// 列出所有车辆
+void list_cars(const AppContext* ctx);
+
 #endif
