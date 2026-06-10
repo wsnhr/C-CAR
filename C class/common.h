@@ -61,4 +61,6 @@ void list_cars(const AppContext* ctx);
 // ---------- 文件管理函数 ----------
 int save_users(const AppContext* ctx);
 int load_users(AppContext* ctx);
+int save_cars(const AppContext* ctx);
+int load_cars(AppContext* ctx);
 #endif

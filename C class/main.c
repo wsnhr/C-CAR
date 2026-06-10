@@ -172,12 +172,12 @@ void car_menu(AppContext* ctx) {
             scanf("%19s", model);
 
             if (add_car(ctx, plate, brand, model, ctx->current_user) == 0) {
+                save_cars(ctx);   
                 printf("添加车辆成功！\n");
             }
             else {
                 printf("添加车辆失败！\n");
             }
-            break;
 
         case 2:
             list_cars(ctx);
@@ -188,12 +188,12 @@ void car_menu(AppContext* ctx) {
             scanf("%9s", plate);
 
             if (remove_car(ctx, plate) == 0) {
+                save_cars(ctx);   
                 printf("删除成功！\n");
             }
             else {
                 printf("删除失败！\n");
             }
-            break;
 
         case 0:
             return;
@@ -246,11 +246,15 @@ void user_menu(AppContext* ctx) {
     }
 }
 
-int main() {
+int main()
+{
     AppContext ctx;
 
     init_app(&ctx);
+
     load_users(&ctx);
+    load_cars(&ctx);
+
     user_menu(&ctx);
 
     return 0;

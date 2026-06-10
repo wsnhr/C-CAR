@@ -1,9 +1,12 @@
-﻿  main.c
+﻿  car.c
+  file.c
+  main.c
+  user.c
 D:\C-CAR\C-CAR\C class\main.c(226,13): warning C4013: “register_user”未定义；假设外部返回 int
 D:\C-CAR\C-CAR\C class\main.c(230,17): warning C4013: “login_user”未定义；假设外部返回 int
   正在生成代码
-  3 of 21 functions (14.3%) were compiled, the rest were copied from previous compilation.
-    0 functions were new in current compilation
-    0 functions had inline decision re-evaluated but remain unchanged
+  7 of 23 functions (30.4%) were compiled, the rest were copied from previous compilation.
+    2 functions were new in current compilation
+    3 functions had inline decision re-evaluated but remain unchanged
   已完成代码的生成
   C class.vcxproj -> D:\C-CAR\C-CAR\x64\Release\C class.exe
