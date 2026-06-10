@@ -15,6 +15,17 @@ int find_car_index(const AppContext* ctx, const char* plate) {
     }
     return -1;
 }
+void list_claims(const AppContext* ctx);
+int find_car_index(const AppContext* ctx, const char* plate) {
+    if (!ctx || !plate) return -1;
+    for (int i = 0; i < ctx->car_count; ++i) {
+        if (strcmp(ctx->cars[i].plate, plate) == 0)
+
+            return i;
+
+    }
+    return -1;
+}
 
 Car* find_car(AppContext* ctx, const char* plate) {
     if (!ctx || !plate) return NULL;
@@ -76,6 +87,19 @@ int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const 
     }
     return 0;
 }
+//void list_cars(const AppContext* ctx) {
+//    if (!ctx) return;
+//    if (ctx->car_count == 0) {
+//        printf("没有车辆记录。\n");
+//        return;
+//    }
+//    printf("序号  车牌号    品牌           型号           车主\n");
+//    printf("--------------------------------------------------\n");
+//    for (int i = 0; i < ctx->car_count; ++i) {
+//        const Car* c = &ctx->cars[i];
+//        printf("%-4d  %-8s  %-12s  %-12s  %-8s\n", i + 1, c->plate, c->brand, c->model, c->owner);
+//    }
+//}
 
 void list_cars(const AppContext* ctx) {
     if (!ctx) return;

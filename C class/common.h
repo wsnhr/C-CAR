@@ -56,7 +56,13 @@ int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const 
 
 // 列出所有车辆
 void list_cars(const AppContext* ctx);
-
+// ---------- 保单管理函数原型 ----------
+//增加保单：成功返回0，失败返回-1
+int add_claim(AppContext* ctx, const char* claim_id, const char* policy_id, const char* description, double amount);
+//删除保单：成功返回0，失败返回 - 1
+int settle_claim(AppContext* ctx, const char* claim_id);
+//查找保单索引，找不到返回-1
+Claim* find_claim(AppContext* ctx, const char* claim_id);
 
 // ---------- 文件管理函数 ----------
 int save_users(const AppContext* ctx);
