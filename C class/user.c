@@ -43,7 +43,7 @@ int register_user(AppContext* ctx) {
     strcpy(ctx->users[ctx->user_count].password, password);
 
     ctx->user_count++;
-
+    save_users(ctx);
     printf("注册成功！\n");
     return 1;
 }
@@ -78,35 +78,35 @@ int login_user(AppContext* ctx) {
     printf("用户名或密码错误！\n");
     return 0;
 }
-//认证菜单，提供注册和登录选项,但我没调用它，先留着
-void auth_menu(AppContext* ctx) {
-    int choice;
-
-    while (1) {
-        printf("\n===== 平安好车主系统 =====\n");
-        printf("1. 注册\n");
-        printf("2. 登录\n");
-        printf("0. 退出\n");
-        printf("请选择：");
-
-        if (scanf("%d", &choice) != 1) {
-            printf("输入错误！\n");
-            return;
-        }
-
-        switch (choice) {
-        case 1:
-            register_user(ctx);
-            break;
-        case 2:
-            login_user(ctx);
-            break;
-        case 0:
-            printf("退出系统。\n");
-            return;
-        default:
-            printf("无效选择！\n");
-        }
-    }
-}
-
+////认证菜单，提供注册和登录选项,但我没调用它，先留着
+//void auth_menu(AppContext* ctx) {
+//    int choice;
+//
+//    while (1) {
+//        printf("\n===== 平安好车主系统 =====\n");
+//        printf("1. 注册\n");
+//        printf("2. 登录\n");
+//        printf("0. 退出\n");
+//        printf("请选择：");
+//
+//        if (scanf("%d", &choice) != 1) {
+//            printf("输入错误！\n");
+//            return;
+//        }
+//
+//        switch (choice) {
+//        case 1:
+//            register_user(ctx);
+//            break;
+//        case 2:
+//            login_user(ctx);
+//            break;
+//        case 0:
+//            printf("退出系统。\n");
+//            return;
+//        default:
+//            printf("无效选择！\n");
+//        }
+//    }
+//}
+////

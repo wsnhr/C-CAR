@@ -22,6 +22,7 @@
     <ClCompile Include="car.c" />
     <ClCompile Include="main.c" />
     <ClCompile Include="user.c" />
+    <ClCompile Include="file.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h" />

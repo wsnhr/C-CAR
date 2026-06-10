@@ -57,4 +57,8 @@ int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const 
 // 列出所有车辆
 void list_cars(const AppContext* ctx);
 
+
+// ---------- 文件管理函数 ----------
+int save_users(const AppContext* ctx);
+int load_users(AppContext* ctx);
 #endif
