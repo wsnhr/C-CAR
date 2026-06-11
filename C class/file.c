@@ -142,22 +142,29 @@ int save_cars(const AppContext* ctx)
     }
 
     for (i = 0; i < ctx->car_count; i++) {
-        fprintf(fp, "%s %s %s %s\n",
-            ctx->cars[i].plate,
-            ctx->cars[i].brand,
-            ctx->cars[i].model,
-            ctx->cars[i].owner);
+        fprintf(fp, "%s %s %s %s %d %d %d %d %.2f\n",
+                ctx->cars[i].plate,
+                ctx->cars[i].brand,
+                ctx->cars[i].model,
+                ctx->cars[i].owner,
+                (int)ctx->cars[i].violation,
+                ctx->cars[i].purchase_date.year,
+                ctx->cars[i].purchase_date.month,
+                ctx->cars[i].purchase_date.day,
+                ctx->cars[i].purchase_price);
     }
 
     fclose(fp);
     return 1;
 }
+
+/* 加载车辆：兼容旧格式（如果旧文件只有前4个字段，则使用默认值） */
 int load_cars(AppContext* ctx)
 {
     FILE* fp;
+    int read_count;
 
     fp = fopen("cars.txt", "r");
-
     if (fp == NULL) {
         ctx->car_count = 0;
         return 0;
@@ -165,14 +172,39 @@ int load_cars(AppContext* ctx)
 
     ctx->car_count = 0;
 
-    while (ctx->car_count < MAX_CARS &&
-        fscanf(fp, "%9s %19s %19s %19s",
-            ctx->cars[ctx->car_count].plate,
-            ctx->cars[ctx->car_count].brand,
-            ctx->cars[ctx->car_count].model,
-            ctx->cars[ctx->car_count].owner) == 4)
-    {
-        ctx->car_count++;
+    while (ctx->car_count < MAX_CARS) {
+        Car tmp;
+        int v;
+        int y, m, d;
+        double price;
+
+        // 先尝试完整格式（9项：4字符串 + 4 ints + double）
+        read_count = fscanf(fp, "%9s %19s %19s %19s %d %d %d %d %lf",
+                            tmp.plate, tmp.brand, tmp.model, tmp.owner,
+                            &v, &y, &m, &d, &price);
+        if (read_count == 9) {
+            tmp.violation = (v >= VIOLATION_NONE && v <= VIOLATION_SERIOUS) ? (ViolationLevel)v : VIOLATION_NONE;
+            tmp.purchase_date.year = y; tmp.purchase_date.month = m; tmp.purchase_date.day = d;
+            tmp.purchase_price = price;
+            ctx->cars[ctx->car_count++] = tmp;
+            continue;
+        }
+
+        // 如果不是完整格式，尝试老格式（仅4字符串）
+        // 我们需要回退文件位置：由于 fscanf 在失败时可能会 partially consume, 使用下面的后备读取
+        // 清理流直到行结束并尝试用 sscanf 从缓冲行解析
+        char line[512];
+        if (fgets(line, sizeof(line), fp) == NULL) break; // 没有更多行
+        // 尝试用 sscanf 读取前4个字段（兼容旧数据）
+        if (sscanf(line, "%9s %19s %19s %19s", tmp.plate, tmp.brand, tmp.model, tmp.owner) == 4) {
+            tmp.violation = VIOLATION_NONE;
+            tmp.purchase_date.year = 0; tmp.purchase_date.month = 0; tmp.purchase_date.day = 0;
+            tmp.purchase_price = 0.0;
+            ctx->cars[ctx->car_count++] = tmp;
+            continue;
+        }
+        // 无法解析，跳过
+        if (feof(fp)) break;
     }
 
     fclose(fp);

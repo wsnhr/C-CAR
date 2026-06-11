@@ -16,12 +16,34 @@ typedef struct {
     char password[20];
 } User;
 
+// ---------- 违章等级枚举（与车牌绑定）----------
+// 无、较轻微、轻微、中等、较严重、严重
+typedef enum {
+    VIOLATION_NONE = 0,
+    VIOLATION_VERY_MINOR,
+    VIOLATION_MINOR,
+    VIOLATION_MODERATE,
+    VIOLATION_RELATIVELY_SERIOUS,
+    VIOLATION_SERIOUS
+} ViolationLevel;
+
+// ---------- 日期结构（购买时间）----------
+typedef struct {
+    int year;   // 年，例如 2023
+    int month;  // 月，1-12
+    int day;    // 日，1-31
+} Date;
+
 // ---------- 车辆 ----------
 typedef struct {
     char plate[10];      // 车牌号
     char brand[20];      // 品牌
     char model[20];      // 型号
     char owner[20];      // 车主（存用户名）
+
+    ViolationLevel violation; // 违章程度（枚举）
+    Date purchase_date;       // 购买时间（年/月/日）
+    double purchase_price;    // 购买时价格（元,人民币）
 } Car;
 
 // ---------- 总数据容器 ----------
@@ -69,4 +91,5 @@ int save_users(const AppContext* ctx);
 int load_users(AppContext* ctx);
 int save_cars(const AppContext* ctx);
 int load_cars(AppContext* ctx);
+
 #endif
