@@ -98,7 +98,8 @@ void init_app(AppContext* ctx);
 
 // 添加车辆：（请在实现中保持兼容）
 // 旧签名保留，项目中如需可重载或替换为完整签名
-int add_car(AppContext* ctx, const char* plate, const char* brand, const char* model, const char* owner);
+int add_car(AppContext* ctx, const char* plate, const char* brand, const char* model, const char* owner,
+    ViolationLevel violation, Date purchase_date, double purchase_price);
 
 // 删除车辆（按车牌号）：成功返回0，失败返回-1
 int remove_car(AppContext* ctx, const char* plate);
@@ -110,7 +111,8 @@ int find_car_index(const AppContext* ctx, const char* plate);
 Car* find_car(AppContext* ctx, const char* plate);
 
 // 修改车辆信息（按车牌号）：成功返回0，失败返回-1
-int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const char* new_model, const char* new_owner);
+int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const char* new_model, const char* new_owner,
+    ViolationLevel new_violation, Date new_purchase_date, double new_purchase_price);
 
 // 列出所有车辆
 void list_cars(const AppContext* ctx);
