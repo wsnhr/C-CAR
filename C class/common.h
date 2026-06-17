@@ -5,10 +5,13 @@
 #include <stdio.h>
 #include <string.h>
 #include <stdlib.h>
+#include <time.h> // 供实现中计算年
 
 // 容量上限
-#define MAX_USERS 100
-#define MAX_CARS  100
+#define MAX_USERS    100
+#define MAX_CARS     100
+#define MAX_POLICIES 100
+#define MAX_CLAIMS   200
 
 // ---------- 用户 ----------
 typedef struct {
@@ -17,14 +20,14 @@ typedef struct {
 } User;
 
 // ---------- 违章等级枚举（与车牌绑定）----------
-// 无、较轻微、轻微、中等、较严重、严重
+
 typedef enum {
-    VIOLATION_NONE = 0,
-    VIOLATION_VERY_MINOR,
-    VIOLATION_MINOR,
-    VIOLATION_MODERATE,
-    VIOLATION_RELATIVELY_SERIOUS,
-    VIOLATION_SERIOUS
+    VIOLATION_NONE = 0,  //无
+    VIOLATION_VERY_MINOR,//较轻微
+    VIOLATION_MINOR,//轻微
+    VIOLATION_MODERATE,//中等
+    VIOLATION_RELATIVELY_SERIOUS,//较严重
+    VIOLATION_SERIOUS//严重
 } ViolationLevel;
 
 // ---------- 日期结构（购买时间）----------
@@ -46,6 +49,32 @@ typedef struct {
     double purchase_price;    // 购买时价格（元,人民币）
 } Car;
 
+// ---------- 保单（Policy） ----------
+typedef struct {
+    char policy_id[24];     // 保单号（唯一）
+    char plate[10];         // 关联车牌
+    char owner[20];         // 投保人（用户名）
+    int active;             // 1=有效，0=失效/取消
+    double coverage_limit;  // 保额上限（单位：元）
+    double premium;         // 年保费（单位：元）
+    Date start_date;        // 生效日期（可选使用）
+    Date end_date;          // 失效日期（可选使用）
+    char coverage_desc[64]; // 保障描述
+} Policy;
+
+// ---------- 理赔（Claim） ----------
+typedef struct {
+    char claim_id[24];      // 理赔单号（唯一）
+    char policy_id[24];     // 关联保单号
+    char plate[10];         // 关联车牌
+    char claimant[20];      // 申请人用户名
+    char description[256];  // 事故/理赔描述
+    double request_amount;  // 申请金额
+    double approved_amount; // 按公式计算出的可赔付金额（尚未/已支付）
+    int settled;            // 0=未结案，1=已结案并支付
+    Date claim_date;        // 申请日期（可选）
+} Claim;
+
 // ---------- 总数据容器 ----------
 typedef struct {
     User users[MAX_USERS];
@@ -54,6 +83,12 @@ typedef struct {
     Car  cars[MAX_CARS];
     int  car_count;
 
+    Policy policies[MAX_POLICIES];
+    int    policy_count;
+
+    Claim claims[MAX_CLAIMS];
+    int   claim_count;
+
     char current_user[20];  // 当前登录的用户名
 } AppContext;
 
@@ -61,7 +96,8 @@ typedef struct {
 // 初始化应用上下文
 void init_app(AppContext* ctx);
 
-// 添加车辆：成功返回0，失败返回-1（已存在或已满或参数错误）
+// 添加车辆：（请在实现中保持兼容）
+// 旧签名保留，项目中如需可重载或替换为完整签名
 int add_car(AppContext* ctx, const char* plate, const char* brand, const char* model, const char* owner);
 
 // 删除车辆（按车牌号）：成功返回0，失败返回-1
@@ -78,18 +114,24 @@ int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const 
 
 // 列出所有车辆
 void list_cars(const AppContext* ctx);
-// ---------- 保单管理函数原型 ----------
-//增加保单：成功返回0，失败返回-1
-int add_claim(AppContext* ctx, const char* claim_id, const char* policy_id, const char* description, double amount);
-//删除保单：成功返回0，失败返回 - 1
-int settle_claim(AppContext* ctx, const char* claim_id);
-//查找保单索引，找不到返回-1
-Claim* find_claim(AppContext* ctx, const char* claim_id);
 
-// ---------- 文件管理函数 ----------
-int save_users(const AppContext* ctx);
-int load_users(AppContext* ctx);
-int save_cars(const AppContext* ctx);
-int load_cars(AppContext* ctx);
+// ---------- 保单/理赔管理函数原型 ----------
+// 保单操作
+int add_policy(AppContext* ctx, const char* policy_id, const char* plate, const char* owner, const char* coverage_desc);
+int remove_policy(AppContext* ctx, const char* policy_id);
+Policy* find_policy(AppContext* ctx, const char* policy_id);
+int modify_policy(AppContext* ctx, const char* policy_id, const char* new_desc, Date new_start, Date new_end, double new_limit);
+
+// 理赔操作
+int add_claim(AppContext* ctx, const char* claim_id, const char* policy_id, const char* claimant, const char* description, double request_amount);
+Claim* find_claim(AppContext* ctx, const char* claim_id);
+int settle_claim(AppContext* ctx, const char* claim_id);
+
+// 计算函数（可用于 UI 显示或内部自动计算）
+// 根据车辆参数计算建议年保费（示例公式，含注释）
+double calculate_premium_for_car(const Car* car);
+
+// 根据保单与申请金额、车辆参数计算可批准的赔付金额（示例公式）
+double calculate_payout_for_claim(const Policy* policy, const Car* car, double request_amount);
 
 #endif
