@@ -142,6 +142,7 @@
 int register_user(AppContext* ctx);
 int login_user(AppContext* ctx);
 
+/* 保持你原有的输入清理函数并复用 */
 static void flush_stdin(void) {
     int ch;
     while ((ch = getchar()) != '\n' && ch != EOF);
@@ -177,6 +178,7 @@ static double prompt_price(void) {
     return p;
 }
 
+/* 车辆管理（保持并兼容之前实现） */
 void car_menu(AppContext* ctx) {
     int choice;
     char plate[16];
@@ -330,6 +332,138 @@ void car_menu(AppContext* ctx) {
     }
 }
 
+/* 保险管理菜单：接入 insurance.c 提供的 API（add_policy/remove_policy/add_claim/settle_claim等） */
+void insurance_menu(AppContext* ctx) {
+    int choice;
+    char policy_id[32];
+    char plate[16];
+    char desc[256];
+    char claim_id[32];
+    double amount;
+
+    while (1) {
+        printf("\n===== 保险管理 =====\n");
+        printf("1. 新增保单\n");
+        printf("2. 删除保单\n");
+        printf("3. 查询保单\n");
+        printf("4. 列出所有保单\n");
+        printf("5. 新增理赔申请\n");
+        printf("6. 列出理赔\n");
+        printf("7. 结案理赔\n");
+        printf("0. 返回上级\n");
+        printf("请选择：");
+
+        if (scanf("%d", &choice) != 1) {
+            printf("输入错误，请输入数字！\n");
+            flush_stdin();
+            continue;
+        }
+        flush_stdin();
+
+        switch (choice) {
+        case 1:
+            if (ctx->current_user[0] == '\0') {
+                printf("请先登录再新增保单。\n");
+                break;
+            }
+            printf("请输入保单号：");
+            if (scanf("%23s", policy_id) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            printf("请输入要投保的车牌号：");
+            if (scanf("%15s", plate) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            printf("请输入保障描述（单词/短句，不要包含换行）：");
+            if (scanf("%255s", desc) != 1) { desc[0] = '\0'; }
+            flush_stdin();
+
+            if (add_policy(ctx, policy_id, plate, ctx->current_user, desc) == 0) {
+                printf("新增保单成功。\n");
+            } else {
+                printf("新增保单失败（可能保单号已存在或车辆不存在）。\n");
+            }
+            break;
+
+        case 2:
+            printf("请输入要删除的保单号：");
+            if (scanf("%23s", policy_id) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            if (remove_policy(ctx, policy_id) == 0) {
+                printf("删除保单成功。\n");
+            } else {
+                printf("删除保单失败。\n");
+            }
+            break;
+
+        case 3:
+            printf("请输入保单号：");
+            if (scanf("%23s", policy_id) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            {
+                Policy* p = find_policy(ctx, policy_id);
+                if (!p) {
+                    printf("未找到保单：%s\n", policy_id);
+                } else {
+                    printf("保单号：%s\n车牌：%s\n投保人：%s\n保额：%.2f\n年保费：%.2f\n状态：%s\n描述：%s\n",
+                           p->policy_id, p->plate, p->owner, p->coverage_limit, p->premium,
+                           p->active ? "在保" : "失效", p->coverage_desc);
+                }
+            }
+            break;
+
+        case 4:
+            /* list_policies 在 insurance.c 中实现（调试/显示用） */
+            list_policies(ctx);
+            break;
+
+        case 5:
+            if (ctx->current_user[0] == '\0') {
+                printf("请先登录再申请理赔。\n");
+                break;
+            }
+            printf("请输入理赔单号：");
+            if (scanf("%23s", claim_id) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            printf("请输入对应保单号：");
+            if (scanf("%23s", policy_id) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            printf("请输入申请金额（元）：");
+            if (scanf("%lf", &amount) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            printf("请输入理赔说明（短句，不包含换行）：");
+            if (scanf("%255s", desc) != 1) desc[0] = '\0';
+            flush_stdin();
+
+            if (add_claim(ctx, claim_id, policy_id, ctx->current_user, desc, amount) == 0) {
+                printf("理赔申请已提交（待审批）。\n");
+            } else {
+                printf("理赔申请失败（可能保单不存在或保单无效）。\n");
+            }
+            break;
+
+        case 6:
+            list_claims(ctx);
+            break;
+
+        case 7:
+            printf("请输入要结案的理赔单号：");
+            if (scanf("%23s", claim_id) != 1) { printf("输入错误。\n"); flush_stdin(); break; }
+            flush_stdin();
+            if (settle_claim(ctx, claim_id) == 0) {
+                printf("理赔已结案。\n");
+            } else {
+                printf("结案失败（未找到或参数错误）。\n");
+            }
+            break;
+
+        case 0:
+            return;
+
+        default:
+            printf("无效选择！\n");
+        }
+    }
+}
+
 void user_menu(AppContext* ctx) {
     int choice;
 
@@ -339,7 +473,8 @@ void user_menu(AppContext* ctx) {
         printf("2. 登录\n");
         printf("3. 注销登录\n");
         printf("4. 车辆管理\n");
-        printf("0. 返回主菜单\n");
+        printf("5. 保险管理\n");
+        printf("0. 退出\n");
         printf("请选择：");
 
         if (scanf("%d", &choice) != 1) {
@@ -370,6 +505,10 @@ void user_menu(AppContext* ctx) {
             car_menu(ctx);
             break;
 
+        case 5:
+            insurance_menu(ctx);
+            break;
+
         case 0:
             printf("退出系统，再见！\n");
             return;
@@ -384,8 +523,8 @@ int main() {
     AppContext ctx;
 
     init_app(&ctx);
-    load_users(&ctx);
-    load_cars(&ctx);
+    //load_users(&ctx);
+    //load_cars(&ctx);
 
     user_menu(&ctx);
 
