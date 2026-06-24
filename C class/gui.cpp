@@ -1,13 +1,13 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include <graphics.h>
 #include <windows.h>
-#include <cstdio>
-#include <cstring>
+//#include <stdio.h>
+//#include <string.h>
 #include "common.h"
 #include "gui.h"
 
 // 本文件：图形界面（C++，EasyX）
-// 目的：为中国用户提供中文界面，保留原有逻辑并增加注释以便维护。
+// 目的：提供中文界面，保留原有逻辑并增加注释以便维护。
 // 说明：使用 EasyX 库（graphics.h）绘制窗口和控件；窗口内部交互基于 peekmessage/EM_MOUSE。
 // 注意：编译前请确保项目已正确配置 EasyX 的 include 与 lib 路径。
 
