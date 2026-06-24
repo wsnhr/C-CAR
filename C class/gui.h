@@ -23,7 +23,7 @@ extern "C" {
 
 // 启动图形界面（基于 EasyX 实现）
 // 调用后进入图形界面，关闭图形窗口后返回到控制台程序
-void start_gui(AppContext* ctx);
+void gui_run(AppContext* ctx);
 
 #ifdef __cplusplus
 }
