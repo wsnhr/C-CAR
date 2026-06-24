@@ -20,13 +20,19 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="car.c" />
-    <ClCompile Include="main.c" />
+    <ClCompile Include="gui.cpp">
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+    </ClCompile>
+    <ClCompile Include="main.cpp">
+      <CompileAs Condition="'$(Configuration)|$(Platform)'=='Release|x64'">CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClCompile Include="user.c" />
     <ClCompile Include="file.c" />
     <ClCompile Include="insurance.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="common.h" />
+    <ClInclude Include="gui.h" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <VCProjectVersion>17.0</VCProjectVersion>
