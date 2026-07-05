@@ -686,6 +686,7 @@ static void handle_add_policy(AppContext* ctx, GuiState* state)
         owner[sizeof(owner)-1] = '\0';
     }
     if (add_policy(ctx, policy_id, plate, owner, desc) == 0) {
+        save_policies(ctx);
         set_message(state, L"添加保单成功");
         state->insurance_view = VIEW_POLICY_LIST;
     }
@@ -701,7 +702,12 @@ static void handle_delete_policy(AppContext* ctx, GuiState* state)
     Policy* p = find_policy(ctx, policy_id);
     if (!p) { set_message(state, L"未找到该保单"); return; }
     if (!is_admin(ctx) && strcmp(p->owner, ctx->current_user) != 0) { set_message(state, L"只能删除当前用户相关的保单"); return; }
-    if (remove_policy(ctx, policy_id) == 0) set_message(state, L"删除保单成功");
+    if (remove_policy(ctx, policy_id) == 0) 
+    {   
+        save_policies(ctx);
+        set_message(state, L"删除保单成功");
+    
+    }
     else set_message(state, L"删除保单失败");
 }
 
@@ -747,6 +753,7 @@ static void handle_add_claim(AppContext* ctx, GuiState* state)
         claimant[sizeof(claimant)-1] = '\0';
     }
     if (add_claim(ctx, claim_id, policy_id, claimant, desc, amount) == 0) {
+        save_claims(ctx);
         set_message(state, L"提交理赔成功");
         state->insurance_view = VIEW_CLAIM_LIST;
     }
@@ -762,7 +769,10 @@ static void handle_settle_claim(AppContext* ctx, GuiState* state)
     Claim* c = find_claim(ctx, claim_id);
     if (!c) { set_message(state, L"未找到理赔单"); return; }
     if (!is_admin(ctx) && strcmp(c->claimant, ctx->current_user) != 0) { set_message(state, L"只能结案当前用户提交的理赔"); return; }
-    if (settle_claim(ctx, claim_id) == 0) set_message(state, L"理赔结案成功");
+    if (settle_claim(ctx, claim_id) == 0) {
+        save_claims(ctx);
+        set_message(state, L"理赔结案成功"); 
+    }
     else set_message(state, L"理赔结案失败");
 }
 
@@ -945,6 +955,8 @@ extern "C" void gui_run(AppContext* ctx)
     /* 启动前加载数据文件 */
     load_users(ctx);
     load_cars(ctx);
+    load_policies(ctx);
+    load_claims(ctx);
     GuiState state;
     memset(&state, 0, sizeof(state));
     state.screen = SCREEN_HOME;

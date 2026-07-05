@@ -1,73 +1,3 @@
-//#define _CRT_SECURE_NO_WARNINGS
-//#include "common.h"
-//
-//int save_users(const AppContext* ctx) {
-//    FILE* fp;
-//    int i;
-//	int count;  // 保护变量，避免直接使用 ctx->user_count
-//
-//    fp = fopen("users.txt", "w");
-//    if (fp == NULL) {
-//        printf("用户数据保存失败！\n");
-//        return 0;
-//    }
-//
-//    //  核心：复制并校验 user_count
-//    count = ctx->user_count;
-//
-//    if (count < 0) {
-//        count = 0;
-//    }
-//
-//    if (count > MAX_USERS) {
-//        count = MAX_USERS;
-//    }
-//
-//    // 用 count 写入，而不是 ctx->user_count
-//    fprintf(fp, "%d\n", count);
-//
-//    for (i = 0; i < count; i++) {
-//        fprintf(fp, "%s %s\n",
-//            ctx->users[i].username,
-//            ctx->users[i].password);
-//    }
-//
-//    fclose(fp);
-//    return 1;
-//}
-//
-//int load_users(AppContext* ctx) {
-//    FILE* fp;
-//    int i;
-//
-//    fp = fopen("users.txt", "r");
-//    if (fp == NULL) {
-//        return 0;
-//    }
-//
-//    if (fscanf(fp, "%d", &ctx->user_count) != 1) {
-//        fclose(fp);
-//        ctx->user_count = 0;
-//        return 0;
-//    }
-//
-//    if (ctx->user_count > MAX_USERS) {
-//        ctx->user_count = MAX_USERS;
-//    }
-//
-//    for (i = 0; i < ctx->user_count; i++) {
-//        if (fscanf(fp, "%19s %19s",
-//            ctx->users[i].username,
-//            ctx->users[i].password) != 2) {
-//
-//            ctx->user_count = i;
-//            break;
-//        }
-//    }
-//
-//    fclose(fp);
-//    return 1;
-//}
 #define _CRT_SECURE_NO_WARNINGS
 #include "common.h"
 
@@ -205,6 +135,132 @@ int load_cars(AppContext* ctx)
         }
         // 无法解析，跳过
         if (feof(fp)) break;
+    }
+
+    fclose(fp);
+    return 1;
+}
+int save_policies(const AppContext* ctx)
+{
+    FILE* fp;
+    int i;
+
+    fp = fopen("policies.txt", "w");
+    if (fp == NULL) {
+        printf("保单数据保存失败！\n");
+        return 0;
+    }
+
+    for (i = 0; i < ctx->policy_count; i++) {
+        fprintf(fp, "%s %s %s %d %.2f %.2f %d %d %d %d %d %d %s\n",
+            ctx->policies[i].policy_id,
+            ctx->policies[i].plate,
+            ctx->policies[i].owner,
+            ctx->policies[i].active,
+            ctx->policies[i].coverage_limit,
+            ctx->policies[i].premium,
+            ctx->policies[i].start_date.year,
+            ctx->policies[i].start_date.month,
+            ctx->policies[i].start_date.day,
+            ctx->policies[i].end_date.year,
+            ctx->policies[i].end_date.month,
+            ctx->policies[i].end_date.day,
+            ctx->policies[i].coverage_desc);
+    }
+
+    fclose(fp);
+    return 1;
+}
+int load_policies(AppContext* ctx)
+{
+    FILE* fp;
+
+    fp = fopen("policies.txt", "r");
+    if (fp == NULL) {
+        ctx->policy_count = 0;
+        return 0;
+    }
+
+    ctx->policy_count = 0;
+
+    while (ctx->policy_count < MAX_POLICIES &&
+        fscanf(fp, "%23s %9s %19s %d %lf %lf %d %d %d %d %d %d %63s",
+            ctx->policies[ctx->policy_count].policy_id,
+            ctx->policies[ctx->policy_count].plate,
+            ctx->policies[ctx->policy_count].owner,
+            &ctx->policies[ctx->policy_count].active,
+            &ctx->policies[ctx->policy_count].coverage_limit,
+            &ctx->policies[ctx->policy_count].premium,
+            &ctx->policies[ctx->policy_count].start_date.year,
+            &ctx->policies[ctx->policy_count].start_date.month,
+            &ctx->policies[ctx->policy_count].start_date.day,
+            &ctx->policies[ctx->policy_count].end_date.year,
+            &ctx->policies[ctx->policy_count].end_date.month,
+            &ctx->policies[ctx->policy_count].end_date.day,
+            ctx->policies[ctx->policy_count].coverage_desc) == 13)
+    {
+        ctx->policy_count++;
+    }
+
+    fclose(fp);
+    return 1;
+}
+int save_claims(const AppContext* ctx)
+{
+    FILE* fp;
+    int i;
+
+    fp = fopen("claims.txt", "w");
+    if (fp == NULL) {
+        printf("理赔数据保存失败！\n");
+        return 0;
+    }
+
+    for (i = 0; i < ctx->claim_count; i++) {
+        fprintf(fp, "%s %s %s %s %.2f %.2f %d %d %d %d %s\n",
+            ctx->claims[i].claim_id,
+            ctx->claims[i].policy_id,
+            ctx->claims[i].plate,
+            ctx->claims[i].claimant,
+            ctx->claims[i].request_amount,
+            ctx->claims[i].approved_amount,
+            ctx->claims[i].settled,
+            ctx->claims[i].claim_date.year,
+            ctx->claims[i].claim_date.month,
+            ctx->claims[i].claim_date.day,
+            ctx->claims[i].description);
+    }
+
+    fclose(fp);
+    return 1;
+}
+int load_claims(AppContext* ctx)
+{
+    FILE* fp;
+
+    fp = fopen("claims.txt", "r");
+    if (fp == NULL) {
+        ctx->claim_count = 0;
+        return 0;
+    }
+
+    ctx->claim_count = 0;
+
+    while (ctx->claim_count < MAX_CLAIMS &&
+        fscanf(fp, "%23s %23s %9s %19s %lf %lf %d %d %d %d %255s",
+            ctx->claims[ctx->claim_count].claim_id,
+            ctx->claims[ctx->claim_count].policy_id,
+            ctx->claims[ctx->claim_count].plate,
+            ctx->claims[ctx->claim_count].claimant,
+            &ctx->claims[ctx->claim_count].request_amount,
+            &ctx->claims[ctx->claim_count].approved_amount,
+            &ctx->claims[ctx->claim_count].settled,
+            &ctx->claims[ctx->claim_count].claim_date.year,
+            &ctx->claims[ctx->claim_count].claim_date.month,
+            &ctx->claims[ctx->claim_count].claim_date.day,
+            ctx->claims[ctx->claim_count].description) == 11)
+    {
+        ctx->claim_count++;
     }
 
     fclose(fp);

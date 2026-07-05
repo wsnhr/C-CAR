@@ -15,10 +15,10 @@ static const char* violation_to_string(ViolationLevel v) {
 
 void init_app(AppContext* ctx) {
     if (!ctx) return;
-    ctx->user_count = 0;
-    ctx->car_count = 0;
+
+    memset(ctx, 0, sizeof(AppContext));
     ctx->current_user[0] = '\0';
-}// 初始化应用上下文
+    }// 初始化应用上下文
 
 int find_car_index(const AppContext* ctx, const char* plate) {
     if (!ctx || !plate) return -1;
