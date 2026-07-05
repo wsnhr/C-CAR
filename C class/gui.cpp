@@ -170,13 +170,13 @@ static int prompt_violation_field(const wchar_t* title, ViolationLevel* level, V
 /* 判断当前是否已登录 */
 static int is_logged_in(const AppContext* ctx)
 {
-    return ctx->current_user[0] != '\0';
+    return app_is_logged_in(ctx);
 }
 
 /* 判断是否为管理员 */
 static int is_admin(const AppContext* ctx)
 {
-    return ctx->current_user[0] != '\0' && strcmp(ctx->current_user, "admin") == 0;
+    return app_is_admin(ctx);
 }
 
 /* 点中检测工具：判断点是否在矩形内 (C 风格使用指针) */
@@ -283,14 +283,7 @@ static void format_claim_line(const Claim* claim, wchar_t* line, size_t count)
 /* 收集当前可见的车辆索引（可选仅收集属于当前用户的车辆） */
 static int collect_visible_cars(const AppContext* ctx, int only_mine, int* indices, int max_count)
 {
-    int count = 0;
-    int i;
-    /* 非管理员用户强制只显示自己的车辆 */
-    if (!is_admin(ctx)) only_mine = 1;
-    for (i = 0; i < ctx->car_count && count < max_count; ++i) {
-        if (!only_mine || strcmp(ctx->cars[i].owner, ctx->current_user) == 0) indices[count++] = i;
-    }
-    return count;
+    return collect_visible_car_indices(ctx, only_mine, indices, max_count);
 }
 
 /* 绘制表头文本（固定样式） */
@@ -387,94 +380,100 @@ static void draw_cars(const AppContext* ctx, const GuiState* state, const Button
 static void draw_insurance(const AppContext* ctx, const GuiState* state, const Button* buttons, int count)
 {
     int i;
-    draw_title(L"保单与理赔管理");
+
+    draw_title(L"保险理赔管理");
     draw_status(ctx);
     draw_message_box(state);
-    for (i = 0; i < count; ++i) draw_button(&buttons[i]);
+
+    for (i = 0; i < count; ++i)
+        draw_button(&buttons[i]);
+
     draw_content_panel();
+
     if (state->insurance_view == VIEW_POLICY_LIST) {
-        draw_table_header(L"保单号    车牌    投保人      保额     保费   状态   描述");
-        const wchar_t* lines[PAGE_SIZE] = { 0 };
-        wchar_t buffer[PAGE_SIZE][256] = { 0 };
-        int total = 0;
+        int indices[MAX_POLICIES] = { 0 };
+        int total = collect_visible_policy_indices(ctx, indices, MAX_POLICIES);
         int page = state->policy_page;
-        int iidx = 0;
-        int line_count = 0;
-        /* 非管理员用户只看自己的保单 */
-        for (i = 0; i < ctx->policy_count; ++i) {
-            if (!is_admin(ctx) && strcmp(ctx->policies[i].owner, ctx->current_user) != 0) continue;
-            if (line_count < PAGE_SIZE) {
-                format_policy_line(&ctx->policies[i], buffer[line_count], 256);
-                lines[line_count] = buffer[line_count];
-            }
-            line_count++;
-        }
-        total = line_count;
-        /* pagination: rebuild page view */
-        if (total == 0) {
-            wcsncpy_s(buffer[0], 256, L"无保单记录", _TRUNCATE);
-            lines[0] = buffer[0];
-            draw_rows(lines, 1);
-            draw_footer_page(0, 0);
-            return;
-        }
-        int total_pages = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-        if (page >= total_pages) page = total_pages - 1;
-        if (page < 0) page = 0;
-        int start = page * PAGE_SIZE;
-        int end = start + PAGE_SIZE;
-        if (end > total) end = total;
-        /* prepare lines for current page */
-        int idx = 0;
-        for (i = 0; i < ctx->policy_count && idx < end; ++i) {
-            if (!is_admin(ctx) && strcmp(ctx->policies[i].owner, ctx->current_user) != 0) continue;
-            if (idx >= start && idx < end) {
-                format_policy_line(&ctx->policies[i], buffer[idx - start], 256);
-                lines[idx - start] = buffer[idx - start];
-            }
-            idx++;
-        }
-        draw_rows(lines, end - start);
-        draw_footer_page(page, total);
-    } else {
-        draw_table_header(L"理赔号    保单号    车牌    申请人    申请(元)  批准(元)  状态   描述");
+        int total_pages;
+        int start;
+        int end;
+        int row_count;
         const wchar_t* lines[PAGE_SIZE] = { 0 };
         wchar_t buffer[PAGE_SIZE][256] = { 0 };
-        int total = 0;
-        int page = state->claim_page;
-        int line_count = 0;
-        for (i = 0; i < ctx->claim_count; ++i) {
-            if (!is_admin(ctx) && strcmp(ctx->claims[i].claimant, ctx->current_user) != 0) continue;
-            if (line_count < PAGE_SIZE) {
-                format_claim_line(&ctx->claims[i], buffer[line_count], 256);
-                lines[line_count] = buffer[line_count];
-            }
-            line_count++;
-        }
-        total = line_count;
+
+        draw_table_header(L"保单号    车牌    投保人      保额     保费   状态   描述");
+
         if (total == 0) {
-            wcsncpy_s(buffer[0], 256, L"无理赔记录", _TRUNCATE);
+            swprintf_s(buffer[0], 256, L"无保单记录");
             lines[0] = buffer[0];
             draw_rows(lines, 1);
             draw_footer_page(0, 0);
             return;
         }
-        int total_pages = (total + PAGE_SIZE - 1) / PAGE_SIZE;
-        if (page >= total_pages) page = total_pages - 1;
-        if (page < 0) page = 0;
-        int start = page * PAGE_SIZE;
-        int end = start + PAGE_SIZE;
-        if (end > total) end = total;
-        int idx = 0;
-        for (i = 0; i < ctx->claim_count && idx < end; ++i) {
-            if (!is_admin(ctx) && strcmp(ctx->claims[i].claimant, ctx->current_user) != 0) continue;
-            if (idx >= start && idx < end) {
-                format_claim_line(&ctx->claims[i], buffer[idx - start], 256);
-                lines[idx - start] = buffer[idx - start];
-            }
-            idx++;
+
+        total_pages = (total + PAGE_SIZE - 1) / PAGE_SIZE;
+        if (page >= total_pages)
+            page = total_pages - 1;
+        if (page < 0)
+            page = 0;
+
+        start = page * PAGE_SIZE;
+        end = start + PAGE_SIZE;
+        if (end > total)
+            end = total;
+
+        row_count = 0;
+        for (i = start; i < end; ++i) {
+            const Policy* p = &ctx->policies[indices[i]];
+            format_policy_line(p, buffer[row_count], 256);
+            lines[row_count] = buffer[row_count];
+            row_count++;
         }
-        draw_rows(lines, end - start);
+
+        draw_rows(lines, row_count);
+        draw_footer_page(page, total);
+    }
+    else {
+        int indices[MAX_CLAIMS] = { 0 };
+        int total = collect_visible_claim_indices(ctx, indices, MAX_CLAIMS);
+        int page = state->claim_page;
+        int total_pages;
+        int start;
+        int end;
+        int row_count;
+        const wchar_t* lines[PAGE_SIZE] = { 0 };
+        wchar_t buffer[PAGE_SIZE][256] = { 0 };
+
+        draw_table_header(L"理赔号    保单号    车牌    理赔人    申请(元)  核赔(元)  状态   描述");
+
+        if (total == 0) {
+            swprintf_s(buffer[0], 256, L"无理赔记录");
+            lines[0] = buffer[0];
+            draw_rows(lines, 1);
+            draw_footer_page(0, 0);
+            return;
+        }
+
+        total_pages = (total + PAGE_SIZE - 1) / PAGE_SIZE;
+        if (page >= total_pages)
+            page = total_pages - 1;
+        if (page < 0)
+            page = 0;
+
+        start = page * PAGE_SIZE;
+        end = start + PAGE_SIZE;
+        if (end > total)
+            end = total;
+
+        row_count = 0;
+        for (i = start; i < end; ++i) {
+            const Claim* c = &ctx->claims[indices[i]];
+            format_claim_line(c, buffer[row_count], 256);
+            lines[row_count] = buffer[row_count];
+            row_count++;
+        }
+
+        draw_rows(lines, row_count);
         draw_footer_page(page, total);
     }
 }
@@ -489,64 +488,60 @@ static int hit_test_buttons(const Button* buttons, int count, int x, int y)
     return 0;
 }
 
-/* 以下一组函数实现了各类操作处理（注册、登录、车辆操作、保单/理赔操作） */
 
+
+
+/* ================= 具体操作处理 ================= */
+
+/* 用户操作 */
 static void handle_register(AppContext* ctx, GuiState* state)
 {
-    if (ctx->user_count >= MAX_USERS) {
-        set_message(state, L"用户数量已达上限");
-        return;
-    }
     char username[20] = { 0 };
     char password[20] = { 0 };
+
     if (!prompt_char_field(L"注册", L"请输入用户名：", username, sizeof(username), "")) return;
-    if (user_exists(ctx, username)) {
-        set_message(state, L"注册失败：用户名已存在");
-        return;
-    }
     if (!prompt_char_field(L"注册", L"请输入密码：", password, sizeof(password), "")) return;
-    strcpy(ctx->users[ctx->user_count].username, username);
-    strcpy(ctx->users[ctx->user_count].password, password);
-    ctx->user_count++;
-    save_users(ctx);
-    set_message(state, L"注册成功");
+
+    if (register_user_account(ctx, username, password)) {
+        set_message(state, L"注册成功");
+    }
+    else {
+        if (ctx->user_count >= MAX_USERS)
+            set_message(state, L"用户数量已达上限");
+        else if (strcmp(username, "admin") == 0 || user_exists(ctx, username))
+            set_message(state, L"注册失败：用户名已存在");
+        else
+            set_message(state, L"注册失败");
+    }
 }
 
 static void handle_login(AppContext* ctx, GuiState* state)
 {
     char username[20] = { 0 };
     char password[20] = { 0 };
+
     if (!prompt_char_field(L"登录", L"请输入用户名：", username, sizeof(username), "")) return;
     if (!prompt_char_field(L"登录", L"请输入密码：", password, sizeof(password), "")) return;
-    /* 管理员内置账号 */
-    if (strcmp(username, "admin") == 0 && strcmp(password, "123456") == 0) {
-        strcpy(ctx->current_user, "admin");
-        set_message(state, L"以管理员身份登录");
+
+    if (login_user_account(ctx, username, password)) {
+        if (app_is_admin(ctx))
+            set_message(state, L"以管理员身份登录");
+        else
+            set_message(state, L"登录成功");
         return;
     }
-    int i;
-    for (i = 0; i < ctx->user_count; ++i) {
-        if (strcmp(ctx->users[i].username, username) == 0 && strcmp(ctx->users[i].password, password) == 0) {
-            strcpy(ctx->current_user, username);
-            set_message(state, L"登录成功");
-            return;
-        }
-    }
+
     set_message(state, L"登录失败：用户名或密码不匹配");
 }
 
 static void handle_logout(AppContext* ctx, GuiState* state)
 {
-    ctx->current_user[0] = '\0';
+    logout_current_user(ctx);
     set_message(state, L"已登出");
 }
-
+/* 车辆操作 */
 static void handle_add_car(AppContext* ctx, GuiState* state)
 {
-    if (!is_logged_in(ctx)) {
-        set_message(state, L"请先登录后再添加车辆");
-        return;
-    }
     char plate[10] = { 0 };
     char brand[20] = { 0 };
     char model[20] = { 0 };
@@ -554,83 +549,83 @@ static void handle_add_car(AppContext* ctx, GuiState* state)
     ViolationLevel violation = VIOLATION_NONE;
     Date date = { 2024, 1, 1 };
     double price = 0.0;
-    if (!prompt_char_field(L"添加车辆", L"请输入车牌：", plate, sizeof(plate), "")) return;
+
+    if (!prompt_char_field(L"添加车辆", L"请输入车牌号：", plate, sizeof(plate), "")) return;
     if (!prompt_char_field(L"添加车辆", L"请输入品牌：", brand, sizeof(brand), "")) return;
     if (!prompt_char_field(L"添加车辆", L"请输入型号：", model, sizeof(model), "")) return;
     if (!prompt_violation_field(L"添加车辆", &violation, VIOLATION_NONE)) return;
     if (!prompt_date_field(L"添加车辆", &date, NULL)) return;
-    if (!prompt_double_field(L"添加车辆", L"请输入购入价格（元）：", &price, 0.0)) return;
+    if (!prompt_double_field(L"添加车辆", L"请输入购买价格（元）：", &price, 0.0)) return;
+
     if (is_admin(ctx)) {
         if (!prompt_char_field(L"添加车辆", L"请输入车主用户名：", owner, sizeof(owner), "")) return;
-        if (!user_exists(ctx, owner)) {
-            set_message(state, L"指定的车主不存在");
-            return;
-        }
-    } else {
-        strncpy(owner, ctx->current_user, sizeof(owner) - 1);
-        owner[sizeof(owner) - 1] = '\0';
     }
-    if (add_car(ctx, plate, brand, model, owner, violation, date, price) == 0) {
+
+    if (add_car_for_current_user(ctx, plate, brand, model, owner, violation, date, price)) {
         save_cars(ctx);
         set_message(state, L"添加车辆成功");
         state->car_show_mine = 0;
     }
     else {
-        set_message(state, L"添加车辆失败（可能车牌已存在或已达上限）");
+        set_message(state, L"添加车辆失败");
     }
 }
 
 static void handle_find_car(AppContext* ctx, GuiState* state)
 {
     char plate[10] = { 0 };
-    if (!prompt_char_field(L"查找车辆", L"请输入车牌：", plate, sizeof(plate), "")) return;
-    Car* car = find_car(ctx, plate);
+
+    if (!prompt_char_field(L"查找车辆", L"请输入车牌号：", plate, sizeof(plate), "")) return;
+
+    const Car* car = find_visible_car(ctx, plate);
     if (!car) {
         set_message(state, L"未找到该车辆");
         return;
     }
-    /* 如果不是管理员且该车不是当前用户的，禁止查看详细信息（仅显示未找到） */
-    if (!is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0) {
-        set_message(state, L"未找到该车辆");
-        return;
-    }
+
     wchar_t plate_t[32], brand_t[64], model_t[64], owner_t[64], message[512];
     char_to_wchar(car->plate, plate_t, 32);
     char_to_wchar(car->brand, brand_t, 64);
     char_to_wchar(car->model, model_t, 64);
     char_to_wchar(car->owner, owner_t, 64);
-    _snwprintf_s(message, 512, _TRUNCATE, L"车牌:%s 品牌:%s 型号:%s 车主:%s 违章:%s 购入:%04d-%02d-%02d 价格:%.2f元", plate_t, brand_t, model_t, owner_t, violation_to_text(car->violation), car->purchase_date.year, car->purchase_date.month, car->purchase_date.day, car->purchase_price);
+
+    _snwprintf_s(
+        message, 512, _TRUNCATE,
+        L"车牌:%s 品牌:%s 型号:%s 车主:%s 违章:%s 购买:%04d-%02d-%02d 价格:%.2f元",
+        plate_t, brand_t, model_t, owner_t,
+        violation_to_text(car->violation),
+        car->purchase_date.year, car->purchase_date.month, car->purchase_date.day,
+        car->purchase_price
+    );
+
     set_message(state, message);
 }
 
 static void handle_modify_car(AppContext* ctx, GuiState* state)
 {
-    if (!is_logged_in(ctx)) {
-        set_message(state, L"请先登录后再编辑车辆");
-        return;
-    }
     char plate[10] = { 0 };
-    if (!prompt_char_field(L"编辑车辆", L"请输入要编辑的车牌：", plate, sizeof(plate), "")) return;
+
+    if (!prompt_char_field(L"编辑车辆", L"请输入要编辑的车牌号：", plate, sizeof(plate), "")) return;
+
     Car* car = find_car(ctx, plate);
     if (!car) {
         set_message(state, L"未找到该车辆");
         return;
     }
-    if (!is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0) {
-        set_message(state, L"只能编辑当前用户拥有的车辆");
-        return;
-    }
+
     char brand[20] = { 0 };
     char model[20] = { 0 };
     ViolationLevel violation = car->violation;
     Date date = car->purchase_date;
     double price = car->purchase_price;
+
     if (!prompt_char_field(L"编辑车辆", L"请输入新品牌（留空则保持不变）：", brand, sizeof(brand), car->brand)) return;
     if (!prompt_char_field(L"编辑车辆", L"请输入新型号（留空则保持不变）：", model, sizeof(model), car->model)) return;
     if (!prompt_violation_field(L"编辑车辆", &violation, car->violation)) return;
     if (!prompt_date_field(L"编辑车辆", &date, &car->purchase_date)) return;
-    if (!prompt_double_field(L"编辑车辆", L"请输入新购入价格：", &price, car->purchase_price)) return;
-    if (modify_car(ctx, plate, brand, model, NULL, violation, date, price) == 0) {
+    if (!prompt_double_field(L"编辑车辆", L"请输入新购买价格：", &price, car->purchase_price)) return;
+
+    if (modify_car_for_current_user(ctx, plate, brand, model, violation, date, price)) {
         save_cars(ctx);
         set_message(state, L"编辑车辆成功");
     }
@@ -641,22 +636,11 @@ static void handle_modify_car(AppContext* ctx, GuiState* state)
 
 static void handle_delete_car(AppContext* ctx, GuiState* state)
 {
-    if (!is_logged_in(ctx)) {
-        set_message(state, L"请先登录后再删除车辆");
-        return;
-    }
     char plate[10] = { 0 };
-    if (!prompt_char_field(L"删除车辆", L"请输入要删除的车牌：", plate, sizeof(plate), "")) return;
-    Car* car = find_car(ctx, plate);
-    if (!car) {
-        set_message(state, L"未找到该车辆");
-        return;
-    }
-    if (!is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0) {
-        set_message(state, L"只能删除当前用户拥有的车辆");
-        return;
-    }
-    if (remove_car(ctx, plate) == 0) {
+
+    if (!prompt_char_field(L"删除车辆", L"请输入要删除的车牌号：", plate, sizeof(plate), "")) return;
+
+    if (remove_car_for_current_user(ctx, plate)) {
         save_cars(ctx);
         set_message(state, L"删除车辆成功");
     }
@@ -664,31 +648,27 @@ static void handle_delete_car(AppContext* ctx, GuiState* state)
         set_message(state, L"删除车辆失败");
     }
 }
-
+/* 保单与理赔操作 */
 static void handle_add_policy(AppContext* ctx, GuiState* state)
 {
-    if (!is_logged_in(ctx)) {
-        set_message(state, L"请先登录后再添加保单");
-        return;
-    }
     char policy_id[24] = { 0 };
     char plate[10] = { 0 };
     char desc[64] = { 0 };
     char owner[20] = { 0 };
+
     if (!prompt_char_field(L"添加保单", L"请输入保单号：", policy_id, sizeof(policy_id), "")) return;
     if (!prompt_char_field(L"添加保单", L"请输入投保车牌：", plate, sizeof(plate), "")) return;
     if (!prompt_char_field(L"添加保单", L"请输入保单描述：", desc, sizeof(desc), "")) return;
+
     if (is_admin(ctx)) {
         if (!prompt_char_field(L"添加保单", L"请输入投保人用户名：", owner, sizeof(owner), "")) return;
-        if (!user_exists(ctx, owner)) { set_message(state, L"指定的用户不存在"); return; }
-    } else {
-        strncpy(owner, ctx->current_user, sizeof(owner)-1);
-        owner[sizeof(owner)-1] = '\0';
     }
-    if (add_policy(ctx, policy_id, plate, owner, desc) == 0) {
+
+    if (add_policy_for_current_user(ctx, policy_id, plate, owner, desc)) {
         save_policies(ctx);
         set_message(state, L"添加保单成功");
         state->insurance_view = VIEW_POLICY_LIST;
+        state->policy_page = 0;
     }
     else {
         set_message(state, L"添加保单失败");
@@ -698,64 +678,71 @@ static void handle_add_policy(AppContext* ctx, GuiState* state)
 static void handle_delete_policy(AppContext* ctx, GuiState* state)
 {
     char policy_id[24] = { 0 };
+
     if (!prompt_char_field(L"删除保单", L"请输入保单号：", policy_id, sizeof(policy_id), "")) return;
-    Policy* p = find_policy(ctx, policy_id);
-    if (!p) { set_message(state, L"未找到该保单"); return; }
-    if (!is_admin(ctx) && strcmp(p->owner, ctx->current_user) != 0) { set_message(state, L"只能删除当前用户相关的保单"); return; }
-    if (remove_policy(ctx, policy_id) == 0) 
-    {   
+
+    if (remove_policy_for_current_user(ctx, policy_id)) {
         save_policies(ctx);
         set_message(state, L"删除保单成功");
-    
     }
-    else set_message(state, L"删除保单失败");
+    else {
+        set_message(state, L"删除保单失败");
+    }
 }
 
 static void handle_find_policy(AppContext* ctx, GuiState* state)
 {
     char policy_id[24] = { 0 };
+
     if (!prompt_char_field(L"查询保单", L"请输入保单号：", policy_id, sizeof(policy_id), "")) return;
-    Policy* policy = find_policy(ctx, policy_id);
+
+    const Policy* policy = find_visible_policy(ctx, policy_id);
     if (!policy) {
-        set_message(state, L"未找到保单");
+        set_message(state, L"未找到该保单");
         return;
     }
-    if (!is_admin(ctx) && strcmp(policy->owner, ctx->current_user) != 0) { set_message(state, L"未找到保单"); return; }
+
     wchar_t id_t[40], plate_t[32], owner_t[64], desc_t[96], message[512];
     char_to_wchar(policy->policy_id, id_t, 40);
     char_to_wchar(policy->plate, plate_t, 32);
     char_to_wchar(policy->owner, owner_t, 64);
     char_to_wchar(policy->coverage_desc, desc_t, 96);
-    _snwprintf_s(message, 512, _TRUNCATE, L"保单:%s 车牌:%s 投保人:%s 保额:%.2f 保费:%.2f 状态:%s 描述:%s", id_t, plate_t, owner_t, policy->coverage_limit, policy->premium, policy->active ? L"有效" : L"失效", desc_t);
+
+    _snwprintf_s(
+        message, 512, _TRUNCATE,
+        L"保单:%s 车牌:%s 投保人:%s 保额:%.2f 保费:%.2f 状态:%s 描述:%s",
+        id_t, plate_t, owner_t,
+        policy->coverage_limit,
+        policy->premium,
+        policy->active ? L"有效" : L"失效",
+        desc_t
+    );
+
     set_message(state, message);
 }
 
 static void handle_add_claim(AppContext* ctx, GuiState* state)
 {
-    if (!is_logged_in(ctx)) {
-        set_message(state, L"请先登录后再提交理赔");
-        return;
-    }
     char claim_id[24] = { 0 };
     char policy_id[24] = { 0 };
     char desc[256] = { 0 };
     double amount = 0.0;
-    char claimant[20] = {0};
-    if (!prompt_char_field(L"新增理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), "")) return;
-    if (!prompt_char_field(L"新增理赔", L"请输入关联保单号：", policy_id, sizeof(policy_id), "")) return;
-    if (!prompt_double_field(L"新增理赔", L"请输入申请金额（元）：", &amount, 1000.0)) return;
-    if (!prompt_char_field(L"新增理赔", L"请输入理赔说明：", desc, sizeof(desc), "")) return;
+    char claimant[20] = { 0 };
+
+    if (!prompt_char_field(L"添加理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), "")) return;
+    if (!prompt_char_field(L"添加理赔", L"请输入对应保单号：", policy_id, sizeof(policy_id), "")) return;
+    if (!prompt_double_field(L"添加理赔", L"请输入理赔金额（元）：", &amount, 1000.0)) return;
+    if (!prompt_char_field(L"添加理赔", L"请输入理赔说明：", desc, sizeof(desc), "")) return;
+
     if (is_admin(ctx)) {
-        if (!prompt_char_field(L"新增理赔", L"请输入申请人用户名：", claimant, sizeof(claimant), "")) return;
-        if (!user_exists(ctx, claimant)) { set_message(state, L"指定的用户不存在"); return; }
-    } else {
-        strncpy(claimant, ctx->current_user, sizeof(claimant)-1);
-        claimant[sizeof(claimant)-1] = '\0';
+        if (!prompt_char_field(L"添加理赔", L"请输入理赔人用户名：", claimant, sizeof(claimant), "")) return;
     }
-    if (add_claim(ctx, claim_id, policy_id, claimant, desc, amount) == 0) {
+
+    if (add_claim_for_current_user(ctx, claim_id, policy_id, claimant, desc, amount)) {
         save_claims(ctx);
         set_message(state, L"提交理赔成功");
         state->insurance_view = VIEW_CLAIM_LIST;
+        state->claim_page = 0;
     }
     else {
         set_message(state, L"提交理赔失败");
@@ -765,17 +752,22 @@ static void handle_add_claim(AppContext* ctx, GuiState* state)
 static void handle_settle_claim(AppContext* ctx, GuiState* state)
 {
     char claim_id[24] = { 0 };
+
     if (!prompt_char_field(L"结案理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), "")) return;
-    Claim* c = find_claim(ctx, claim_id);
-    if (!c) { set_message(state, L"未找到理赔单"); return; }
-    if (!is_admin(ctx) && strcmp(c->claimant, ctx->current_user) != 0) { set_message(state, L"只能结案当前用户提交的理赔"); return; }
-    if (settle_claim(ctx, claim_id) == 0) {
+
+    if (settle_claim_for_current_user(ctx, claim_id)) {
         save_claims(ctx);
-        set_message(state, L"理赔结案成功"); 
+        set_message(state, L"理赔结案成功");
     }
-    else set_message(state, L"理赔结案失败");
+    else {
+        set_message(state, L"理赔结案失败");
+    }
 }
 
+
+
+/* ================= 动作分发 ================= */
+/* 首页按钮动作分发 */
 static void handle_home_action(AppContext* ctx, GuiState* state, int action, int* running)
 {
     switch (action) {
@@ -788,7 +780,7 @@ static void handle_home_action(AppContext* ctx, GuiState* state, int action, int
     default: break;
     }
 }
-
+/* 车辆页面按钮动作分发 */
 static void handle_car_action(AppContext* ctx, GuiState* state, int action)
 {
     int indices[MAX_CARS] = { 0 };
@@ -808,26 +800,69 @@ static void handle_car_action(AppContext* ctx, GuiState* state, int action)
     }
 }
 
+/* 保单/理赔页面按钮动作分发 */
 static void handle_insurance_action(AppContext* ctx, GuiState* state, int action)
 {
-    int total = state->insurance_view == VIEW_POLICY_LIST ? ctx->policy_count : ctx->claim_count;
+    int total = 0;
     int* page = state->insurance_view == VIEW_POLICY_LIST ? &state->policy_page : &state->claim_page;
-    int total_pages = total == 0 ? 1 : (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    switch (action) {
-    case INS_ADD_POLICY: handle_add_policy(ctx, state); break;
-    case INS_DELETE_POLICY: handle_delete_policy(ctx, state); break;
-    case INS_FIND_POLICY: handle_find_policy(ctx, state); break;
-    case INS_LIST_POLICIES: state->insurance_view = VIEW_POLICY_LIST; state->policy_page = 0; set_message(state, L"显示保单列表"); break;
-    case INS_ADD_CLAIM: handle_add_claim(ctx, state); break;
-    case INS_LIST_CLAIMS: state->insurance_view = VIEW_CLAIM_LIST; state->claim_page = 0; set_message(state, L"显示理赔列表"); break;
-    case INS_SETTLE_CLAIM: handle_settle_claim(ctx, state); break;
-    case INS_PREV: if (*page > 0) (*page)--; break;
-    case INS_NEXT: if (*page + 1 < total_pages) (*page)++; break;
-    case INS_BACK: state->screen = SCREEN_HOME; set_message(state, L"返回主界面"); break;
-    default: break;
+
+    if (state->insurance_view == VIEW_POLICY_LIST) {
+        int indices[MAX_POLICIES] = { 0 };
+        total = collect_visible_policy_indices(ctx, indices, MAX_POLICIES);
+    }
+    else {
+        int indices[MAX_CLAIMS] = { 0 };
+        total = collect_visible_claim_indices(ctx, indices, MAX_CLAIMS);
+    }
+
+    {
+        int total_pages = total == 0 ? 1 : (total + PAGE_SIZE - 1) / PAGE_SIZE;
+
+        switch (action) {
+        case INS_ADD_POLICY:
+            handle_add_policy(ctx, state);
+            break;
+        case INS_DELETE_POLICY:
+            handle_delete_policy(ctx, state);
+            break;
+        case INS_FIND_POLICY:
+            handle_find_policy(ctx, state);
+            break;
+        case INS_LIST_POLICIES:
+            state->insurance_view = VIEW_POLICY_LIST;
+            state->policy_page = 0;
+            set_message(state, L"显示保单列表");
+            break;
+        case INS_ADD_CLAIM:
+            handle_add_claim(ctx, state);
+            break;
+        case INS_LIST_CLAIMS:
+            state->insurance_view = VIEW_CLAIM_LIST;
+            state->claim_page = 0;
+            set_message(state, L"显示理赔列表");
+            break;
+        case INS_SETTLE_CLAIM:
+            handle_settle_claim(ctx, state);
+            break;
+        case INS_PREV:
+            if (*page > 0)
+                (*page)--;
+            break;
+        case INS_NEXT:
+            if (*page + 1 < total_pages)
+                (*page)++;
+            break;
+        case INS_BACK:
+            state->screen = SCREEN_HOME;
+            set_message(state, L"返回主菜单");
+            break;
+        default:
+            break;
+        }
     }
 }
-
+/* ================= 界面绘制与命中测试 ================= */
+/* 按当前界面状态绘制整页 UI */
 static void draw_ui(const AppContext* ctx, const GuiState* state)
 {
     setbkcolor(RGB(236, 242, 248));
@@ -887,7 +922,7 @@ static void draw_ui(const AppContext* ctx, const GuiState* state)
     }
     FlushBatchDraw();
 }
-
+/* 首页按钮命中测试 */
 static int hit_test_home(int x, int y)
 {
     Button buttons[] = {
@@ -900,7 +935,7 @@ static int hit_test_home(int x, int y)
     };
     return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y);
 }
-
+/* 车辆页面按钮命中测试 */
 static int hit_test_cars(const AppContext* ctx, int x, int y)
 {
     if (is_admin(ctx)) {
@@ -931,7 +966,7 @@ static int hit_test_cars(const AppContext* ctx, int x, int y)
         return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y);
     }
 }
-
+/* 保单/理赔页面按钮命中测试 */
 static int hit_test_insurance(int x, int y)
 {
     Button buttons[] = {

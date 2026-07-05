@@ -121,6 +121,7 @@ double calculate_payout_for_claim(const Policy* policy, const Car* car, double r
     return payout;
 }
 
+
 /* ---------- 保单与理赔管理实现 ---------- */
 
 /* 查找保单索引 */
@@ -315,4 +316,179 @@ void list_claims(const AppContext* ctx) {
                c->request_amount, c->approved_amount,
                c->settled ? "已结" : "未结", c->claimant, c->description);
     }
+}
+
+
+
+/* ================= 当前用户可见性与权限控制 ================= */
+/* 收集当前用户可见的保单下标 */
+int collect_visible_policy_indices(const AppContext* ctx, int* indices, int max_count)
+{
+    int i, count = 0;
+
+    if (!ctx || !indices || max_count <= 0)
+        return 0;
+
+    for (i = 0; i < ctx->policy_count && count < max_count; i++) {
+        if (app_is_admin(ctx) || strcmp(ctx->policies[i].owner, ctx->current_user) == 0)
+            indices[count++] = i;
+    }
+
+    return count;
+}
+/* 收集当前用户可见的理赔下标 */
+int collect_visible_claim_indices(const AppContext* ctx, int* indices, int max_count)
+{
+    int i, count = 0;
+
+    if (!ctx || !indices || max_count <= 0)
+        return 0;
+
+    for (i = 0; i < ctx->claim_count && count < max_count; i++) {
+        if (app_is_admin(ctx) || strcmp(ctx->claims[i].claimant, ctx->current_user) == 0)
+            indices[count++] = i;
+    }
+
+    return count;
+}
+/* 在当前用户可见范围内查找保单 */
+const Policy* find_visible_policy(const AppContext* ctx, const char* policy_id)
+{
+    int i;
+
+    if (!ctx || !policy_id)
+        return NULL;
+
+    for (i = 0; i < ctx->policy_count; i++) {
+        if (strcmp(ctx->policies[i].policy_id, policy_id) == 0) {
+            if (app_is_admin(ctx) || strcmp(ctx->policies[i].owner, ctx->current_user) == 0)
+                return &ctx->policies[i];
+            return NULL;
+        }
+    }
+
+    return NULL;
+}
+/* 在当前用户可见范围内查找理赔 */
+const Claim* find_visible_claim(const AppContext* ctx, const char* claim_id)
+{
+    int i;
+
+    if (!ctx || !claim_id)
+        return NULL;
+
+    for (i = 0; i < ctx->claim_count; i++) {
+        if (strcmp(ctx->claims[i].claim_id, claim_id) == 0) {
+            if (app_is_admin(ctx) || strcmp(ctx->claims[i].claimant, ctx->current_user) == 0)
+                return &ctx->claims[i];
+            return NULL;
+        }
+    }
+
+    return NULL;
+}
+/* 以当前用户身份添加保单 */
+int add_policy_for_current_user(AppContext* ctx, const char* policy_id,
+    const char* plate, const char* requested_owner,
+    const char* coverage_desc)
+{
+    Car* car;
+    char owner[20];
+
+    if (!ctx || !policy_id || !plate || !coverage_desc)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    car = find_car(ctx, plate);
+    if (!car)
+        return 0;
+
+    if (app_is_admin(ctx)) {
+        if (!requested_owner || !user_exists(ctx, requested_owner))
+            return 0;
+        if (strcmp(requested_owner, car->owner) != 0)
+            return 0;
+        strcpy(owner, requested_owner);
+    }
+    else {
+        if (strcmp(car->owner, ctx->current_user) != 0)
+            return 0;
+        strcpy(owner, ctx->current_user);
+    }
+
+    return add_policy(ctx, policy_id, plate, owner, coverage_desc) == 0;
+}
+
+/* 以当前用户身份删除保单 */
+int remove_policy_for_current_user(AppContext* ctx, const char* policy_id)
+{
+    Policy* policy;
+
+    if (!ctx || !policy_id)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    policy = find_policy(ctx, policy_id);
+    if (!policy)
+        return 0;
+
+    if (!app_is_admin(ctx) && strcmp(policy->owner, ctx->current_user) != 0)
+        return 0;
+
+    return remove_policy(ctx, policy_id) == 0;
+}
+/* 以当前用户身份提交理赔 */
+int add_claim_for_current_user(AppContext* ctx, const char* claim_id,
+    const char* policy_id, const char* requested_claimant,
+    const char* description, double request_amount)
+{
+    Policy* policy;
+    char claimant[20];
+
+    if (!ctx || !claim_id || !policy_id || !description)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    policy = find_policy(ctx, policy_id);
+    if (!policy)
+        return 0;
+
+    if (app_is_admin(ctx)) {
+        if (!requested_claimant || !user_exists(ctx, requested_claimant))
+            return 0;
+        strcpy(claimant, requested_claimant);
+    }
+    else {
+        if (strcmp(policy->owner, ctx->current_user) != 0)
+            return 0;
+        strcpy(claimant, ctx->current_user);
+    }
+
+    return add_claim(ctx, claim_id, policy_id, claimant, description, request_amount) == 0;
+}
+/* 以当前用户身份结案理赔 */
+int settle_claim_for_current_user(AppContext* ctx, const char* claim_id)
+{
+    Claim* claim;
+
+    if (!ctx || !claim_id)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    claim = find_claim(ctx, claim_id);
+    if (!claim)
+        return 0;
+
+    if (!app_is_admin(ctx) && strcmp(claim->claimant, ctx->current_user) != 0)
+        return 0;
+
+    return settle_claim(ctx, claim_id) == 0;
 }

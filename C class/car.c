@@ -1,45 +1,51 @@
-#define _CRT_SECURE_NO_WARNINGS
+ï»¿#define _CRT_SECURE_NO_WARNINGS
 #include "common.h"
 
-// ¸¨Öú£ºÎ¥ÕÂµÈ¼¶×ª×Ö·û´®
+/* ================= è¾…åŠ©å‡½æ•° ================= */
+/* è¿ç« ç­‰çº§è½¬å­—ç¬¦ä¸²ï¼Œç”¨äºæ§åˆ¶å°æ˜¾ç¤º */
 static const char* violation_to_string(ViolationLevel v) {
     switch (v) {
-    case VIOLATION_VERY_MINOR: return "½ÏÇáÎ¢";
-    case VIOLATION_MINOR: return "ÇáÎ¢";
-    case VIOLATION_MODERATE: return "ÖĞµÈ";
-    case VIOLATION_RELATIVELY_SERIOUS: return "½ÏÑÏÖØ";
-    case VIOLATION_SERIOUS: return "ÑÏÖØ";
-    default: return "ÎŞ";
+    case VIOLATION_VERY_MINOR: return "è¾ƒè½»å¾®";
+    case VIOLATION_MINOR: return "è½»å¾®";
+    case VIOLATION_MODERATE: return "ä¸­ç­‰";
+    case VIOLATION_RELATIVELY_SERIOUS: return "è¾ƒä¸¥é‡";
+    case VIOLATION_SERIOUS: return "ä¸¥é‡";
+    default: return "æ— ";
     }
 }
-
+/* ================= åŸºç¡€åˆå§‹åŒ–ä¸ CRUD ================= */
+/* åˆå§‹åŒ–åº”ç”¨ä¸Šä¸‹æ–‡ */
 void init_app(AppContext* ctx) {
     if (!ctx) return;
 
     memset(ctx, 0, sizeof(AppContext));
     ctx->current_user[0] = '\0';
-    }// ³õÊ¼»¯Ó¦ÓÃÉÏÏÂÎÄ
+    }
 
+/* æŒ‰è½¦ç‰ŒæŸ¥æ‰¾è½¦è¾†ä¸‹æ ‡ï¼Œæ‰¾ä¸åˆ°è¿”å› -1 */
 int find_car_index(const AppContext* ctx, const char* plate) {
     if (!ctx || !plate) return -1;
     for (int i = 0; i < ctx->car_count; ++i) {
         if (strcmp(ctx->cars[i].plate, plate) == 0) return i;
     }
     return -1;
-}// ²éÕÒ³µÁ¾Ë÷Òı£¬ÕÒ²»µ½·µ»Ø-1
+}
 
+/* æŒ‰è½¦ç‰ŒæŸ¥æ‰¾è½¦è¾†æŒ‡é’ˆï¼Œæ‰¾ä¸åˆ°è¿”å› NULL */
 Car* find_car(AppContext* ctx, const char* plate) {
     if (!ctx || !plate) return NULL;
     int idx = find_car_index(ctx, plate);
     if (idx == -1) return NULL;
     return &ctx->cars[idx];
-}//²éÕÒ³µÁ¾Ö¸Õë£¬ÕÒ²»µ½·µ»ØNULL
+}
 
+
+/* æ·»åŠ è½¦è¾†ï¼šæˆåŠŸè¿”å› 0ï¼Œå¤±è´¥è¿”å› -1 */
 int add_car(AppContext* ctx, const char* plate, const char* brand, const char* model, const char* owner,
             ViolationLevel violation, Date purchase_date, double purchase_price) {
     if (!ctx || !plate || !brand || !model || !owner) return -1;
     if (ctx->car_count >= MAX_CARS) return -1;
-    if (find_car_index(ctx, plate) != -1) return -1; // ÒÑ´æÔÚ
+    if (find_car_index(ctx, plate) != -1) return -1; // å·²å­˜åœ¨
 
     Car* c = &ctx->cars[ctx->car_count];
     strncpy(c->plate, plate, sizeof(c->plate) - 1);
@@ -57,8 +63,9 @@ int add_car(AppContext* ctx, const char* plate, const char* brand, const char* m
 
     ctx->car_count++;
     return 0;
-}// Ìí¼Ó³µÁ¾£º³É¹¦·µ»Ø0£¬Ê§°Ü·µ»Ø-1£¨ÒÑ´æÔÚ»òÒÑÂú»ò²ÎÊı´íÎó£©
+}
 
+/* åˆ é™¤è½¦è¾†ï¼šæˆåŠŸè¿”å› 0ï¼Œå¤±è´¥è¿”å› -1 */
 int remove_car(AppContext* ctx, const char* plate) {
     if (!ctx || !plate) return -1;
     int idx = find_car_index(ctx, plate);
@@ -66,7 +73,7 @@ int remove_car(AppContext* ctx, const char* plate) {
     for (int i = idx; i < ctx->car_count - 1; ++i) {
         ctx->cars[i] = ctx->cars[i + 1];
     }
-    // Çå¿Õ×îºóÒ»Ìõ
+    // æ¸…ç©ºæœ€åä¸€æ¡
     ctx->cars[ctx->car_count - 1].plate[0] = '\0';
     ctx->cars[ctx->car_count - 1].brand[0] = '\0';
     ctx->cars[ctx->car_count - 1].model[0] = '\0';
@@ -78,8 +85,11 @@ int remove_car(AppContext* ctx, const char* plate) {
     ctx->cars[ctx->car_count - 1].purchase_price = 0.0;
     ctx->car_count--;
     return 0;
-}// É¾³ı³µÁ¾£¨°´³µÅÆºÅ£©£º³É¹¦·µ»Ø0£¬Ê§°Ü·µ»Ø-1
+}
 
+
+
+/* ä¿®æ”¹è½¦è¾†ä¿¡æ¯ï¼šæˆåŠŸè¿”å› 0ï¼Œå¤±è´¥è¿”å› -1 */
 int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const char* new_model, const char* new_owner,
                ViolationLevel new_violation, Date new_purchase_date, double new_purchase_price) {
     if (!ctx || !plate) return -1;
@@ -101,15 +111,17 @@ int modify_car(AppContext* ctx, const char* plate, const char* new_brand, const 
     c->purchase_date = new_purchase_date;
     c->purchase_price = new_purchase_price;
     return 0;
-}// ĞŞ¸Ä³µÁ¾ĞÅÏ¢£¨°´³µÅÆºÅ£©£º³É¹¦·µ»Ø0£¬Ê§°Ü·µ»Ø-1
+}
 
+/* ================= æ§åˆ¶å°åˆ—è¡¨è¾“å‡º ================= */
+/* åˆ—å‡ºå…¨éƒ¨è½¦è¾†ä¿¡æ¯ */
 void list_cars(const AppContext* ctx) {
     if (!ctx) return;
     if (ctx->car_count == 0) {
-        printf("Ã»ÓĞ³µÁ¾¼ÇÂ¼¡£\n");
+        printf("æ²¡æœ‰è½¦è¾†è®°å½•ã€‚\n");
         return;
     }
-    printf("ĞòºÅ  ³µÅÆºÅ    Æ·ÅÆ           ĞÍºÅ           ³µÖ÷       Î¥ÕÂ        ¹ºÂòÈÕÆÚ     ¹ºÈë¼Û(Ôª)\n");
+    printf("åºå·  è½¦ç‰Œå·    å“ç‰Œ           å‹å·           è½¦ä¸»       è¿ç«         è´­ä¹°æ—¥æœŸ     è´­å…¥ä»·(å…ƒ)\n");
     printf("------------------------------------------------------------------------------------------------\n");
     for (int i = 0; i < ctx->car_count; ++i) {
         const Car* c = &ctx->cars[i];
@@ -119,4 +131,112 @@ void list_cars(const AppContext* ctx) {
                c->purchase_date.year, c->purchase_date.month, c->purchase_date.day,
                c->purchase_price);
     }
-}//ÁĞ³öËùÓĞ³µÁ¾
+}
+
+/* ================= å½“å‰ç”¨æˆ·å¯è§æ€§ä¸æƒé™æ§åˆ¶ ================= */
+/* æ”¶é›†å½“å‰ç”¨æˆ·å¯è§çš„è½¦è¾†ä¸‹æ ‡ */
+int collect_visible_car_indices(const AppContext* ctx, int only_mine, int* indices, int max_count)
+{
+    int i, count = 0;
+
+    if (!ctx || !indices || max_count <= 0)
+        return 0;
+
+    if (!app_is_admin(ctx))
+        only_mine = 1;
+
+    for (i = 0; i < ctx->car_count && count < max_count; i++) {
+        if (!only_mine || strcmp(ctx->cars[i].owner, ctx->current_user) == 0)
+            indices[count++] = i;
+    }
+
+    return count;
+}
+/* åœ¨å½“å‰ç”¨æˆ·å¯è§èŒƒå›´å†…æŸ¥æ‰¾è½¦è¾† */
+const Car* find_visible_car(const AppContext* ctx, const char* plate)
+{
+    int i;
+
+    if (!ctx || !plate)
+        return NULL;
+
+    for (i = 0; i < ctx->car_count; i++) {
+        if (strcmp(ctx->cars[i].plate, plate) == 0) {
+            if (app_is_admin(ctx) || strcmp(ctx->cars[i].owner, ctx->current_user) == 0)
+                return &ctx->cars[i];
+            return NULL;
+        }
+    }
+
+    return NULL;
+}
+
+/* ä»¥å½“å‰ç”¨æˆ·èº«ä»½æ·»åŠ è½¦è¾† */
+int add_car_for_current_user(AppContext* ctx, const char* plate, const char* brand,
+    const char* model, const char* requested_owner,
+    ViolationLevel violation, Date purchase_date, double purchase_price)
+{
+    char owner[20];
+
+    if (!ctx || !plate || !brand || !model)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    if (app_is_admin(ctx)) {
+        if (!requested_owner || !user_exists(ctx, requested_owner))
+            return 0;
+        strcpy(owner, requested_owner);
+    }
+    else {
+        strcpy(owner, ctx->current_user);
+    }
+
+    return add_car(ctx, plate, brand, model, owner, violation, purchase_date, purchase_price) == 0;
+}
+
+/* ä»¥å½“å‰ç”¨æˆ·èº«ä»½ä¿®æ”¹è½¦è¾† */
+int modify_car_for_current_user(AppContext* ctx, const char* plate,
+    const char* new_brand, const char* new_model,
+    ViolationLevel new_violation, Date new_purchase_date, double new_purchase_price)
+{
+    Car* car;
+
+    if (!ctx || !plate)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    car = find_car(ctx, plate);
+    if (!car)
+        return 0;
+
+    if (!app_is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0)
+        return 0;
+
+    return modify_car(ctx, plate, new_brand, new_model, NULL,
+        new_violation, new_purchase_date, new_purchase_price) == 0;
+}
+
+/* ä»¥å½“å‰ç”¨æˆ·èº«ä»½åˆ é™¤è½¦è¾† */
+int remove_car_for_current_user(AppContext* ctx, const char* plate)
+{
+    Car* car;
+
+    if (!ctx || !plate)
+        return 0;
+
+    if (!app_is_logged_in(ctx))
+        return 0;
+
+    car = find_car(ctx, plate);
+    if (!car)
+        return 0;
+
+    if (!app_is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0)
+        return 0;
+
+    return remove_car(ctx, plate) == 0;
+}

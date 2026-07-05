@@ -1,10 +1,8 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "common.h"
 
-/*
-    追加保存一个新用户
-    函数名仍然叫 save_users，避免其他文件找不到
-*/
+/* ================= 用户数据持久化 ================= */
+/* 保存新增用户：采用追加写入 */
 int save_users(const AppContext* ctx)
 {
     FILE* fp;
@@ -30,11 +28,7 @@ int save_users(const AppContext* ctx)
     fclose(fp);
     return 1;
 }
-
-/*
-    读取所有用户
-    不再读取第一行数量
-*/
+/* 加载全部用户 */
 int load_users(AppContext* ctx)
 {
     FILE* fp;
@@ -59,6 +53,8 @@ int load_users(AppContext* ctx)
     fclose(fp);
     return 1;
 }
+/* ================= 车辆数据持久化 ================= */
+/* 保存全部车辆：采用全量重写 */
 int save_cars(const AppContext* ctx)
 {
     FILE* fp;
@@ -87,8 +83,7 @@ int save_cars(const AppContext* ctx)
     fclose(fp);
     return 1;
 }
-
-/* 加载车辆：兼容旧格式（如果旧文件只有前4个字段，则使用默认值） */
+/* 加载车辆：兼容完整格式与旧版简化格式 */
 int load_cars(AppContext* ctx)
 {
     FILE* fp;
@@ -140,6 +135,8 @@ int load_cars(AppContext* ctx)
     fclose(fp);
     return 1;
 }
+/* ================= 保单数据持久化 ================= */
+/* 保存全部保单：采用全量重写 */
 int save_policies(const AppContext* ctx)
 {
     FILE* fp;
@@ -171,6 +168,7 @@ int save_policies(const AppContext* ctx)
     fclose(fp);
     return 1;
 }
+/* 加载全部保单 */
 int load_policies(AppContext* ctx)
 {
     FILE* fp;
@@ -205,6 +203,8 @@ int load_policies(AppContext* ctx)
     fclose(fp);
     return 1;
 }
+/* ================= 理赔数据持久化 ================= */
+/* 保存全部理赔：采用全量重写 */
 int save_claims(const AppContext* ctx)
 {
     FILE* fp;
@@ -234,6 +234,7 @@ int save_claims(const AppContext* ctx)
     fclose(fp);
     return 1;
 }
+/* 加载全部理赔 */
 int load_claims(AppContext* ctx)
 {
     FILE* fp;
