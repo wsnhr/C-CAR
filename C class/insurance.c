@@ -1,6 +1,47 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "common.h"
 
+/* helper: compare dates y/m/d. return -1 if a<b, 0 if equal, 1 if a>b */
+static int compare_date(const Date* a, const Date* b) {
+    if (!a || !b) return 0;
+    if (a->year != b->year) return (a->year < b->year) ? -1 : 1;
+    if (a->month != b->month) return (a->month < b->month) ? -1 : 1;
+    if (a->day != b->day) return (a->day < b->day) ? -1 : 1;
+    return 0;
+}
+
+static Date today_date(void) {
+    time_t t = time(NULL);
+    struct tm tmv;
+#ifdef _WIN32
+    localtime_s(&tmv, &t);
+#else
+    localtime_r(&t, &tmv);
+#endif
+    Date d;
+    d.year = tmv.tm_year + 1900;
+    d.month = tmv.tm_mon + 1;
+    d.day = tmv.tm_mday;
+    return d;
+}
+
+/* check policies and auto-expire based on end_date */
+void update_policy_active_status(AppContext* ctx) {
+    if (!ctx) return;
+    Date now = today_date();
+    for (int i = 0; i < ctx->policy_count; ++i) {
+        Policy* p = &ctx->policies[i];
+        if (p->active) {
+            if (p->end_date.year != 0) {
+                if (compare_date(&p->end_date, &now) < 0) {
+                    p->active = 0;
+                    append_operation_log(ctx, "AUTO_EXPIRE_POLICY", p->policy_id, "policy expired by end_date");
+                }
+            }
+        }
+    }
+}
+
 /*
  insurance.c
  实现保单与理赔管理，以及基于车辆参数（车价、购买年份、违章等级等）

@@ -267,3 +267,106 @@ int load_claims(AppContext* ctx)
     fclose(fp);
     return 1;
 }
+/* ================= 操作日志 ================= */
+void append_operation_log(const AppContext* ctx, const char* action, const char* target, const char* details)
+{
+    FILE* fp = fopen("operations.log", "a");
+    if (!fp) return;
+    time_t t = time(NULL);
+    struct tm tmv;
+#ifdef _WIN32
+    localtime_s(&tmv, &t);
+#else
+    localtime_r(&t, &tmv);
+#endif
+    char timebuf[64];
+    strftime(timebuf, sizeof(timebuf), "%Y-%m-%d %H:%M:%S", &tmv);
+    const char* user = ctx && ctx->current_user[0] ? ctx->current_user : "(none)";
+    fprintf(fp, "%s | user=%s | action=%s | target=%s | details=%s\n", timebuf, user, action ? action : "", target ? target : "", details ? details : "");
+    fclose(fp);
+}
+
+/* ================= 级联删除：当删除车辆/用户时清理相关保单和理赔 ================= */
+
+/* 删除车辆时移除关联保单与理赔 */
+int cascade_remove_policies_and_claims_for_plate(AppContext* ctx, const char* plate)
+{
+    if (!ctx || !plate) return 0;
+    int i;
+    // remove claims related to policies on this plate and claims referencing plate
+    for (i = 0; i < ctx->claim_count; ) {
+        if (strcmp(ctx->claims[i].plate, plate) == 0) {
+            append_operation_log(ctx, "DELETE_CLAIM_CASCADE", ctx->claims[i].claim_id, plate);
+            // shift left
+            for (int j = i; j < ctx->claim_count - 1; ++j) ctx->claims[j] = ctx->claims[j+1];
+            ctx->claim_count--;
+        } else {
+            ++i;
+        }
+    }
+    // remove policies associated with plate and their claims
+    for (i = 0; i < ctx->policy_count; ) {
+        if (strcmp(ctx->policies[i].plate, plate) == 0) {
+            append_operation_log(ctx, "DELETE_POLICY_CASCADE", ctx->policies[i].policy_id, plate);
+            // also remove claims that reference this policy
+            for (int k = 0; k < ctx->claim_count; ) {
+                if (strcmp(ctx->claims[k].policy_id, ctx->policies[i].policy_id) == 0) {
+                    append_operation_log(ctx, "DELETE_CLAIM_CASCADE", ctx->claims[k].claim_id, ctx->policies[i].policy_id);
+                    for (int j = k; j < ctx->claim_count - 1; ++j) ctx->claims[j] = ctx->claims[j+1];
+                    ctx->claim_count--;
+                } else ++k;
+            }
+            for (int j = i; j < ctx->policy_count - 1; ++j) ctx->policies[j] = ctx->policies[j+1];
+            ctx->policy_count--;
+        } else ++i;
+    }
+    return 1;
+}
+
+int cascade_remove_for_user(AppContext* ctx, const char* username)
+{
+    if (!ctx || !username) return 0;
+    // remove cars owned by user
+    for (int i = 0; i < ctx->car_count; ) {
+        if (strcmp(ctx->cars[i].owner, username) == 0) {
+            append_operation_log(ctx, "DELETE_CAR_CASCADE", ctx->cars[i].plate, username);
+            cascade_remove_policies_and_claims_for_plate(ctx, ctx->cars[i].plate);
+            for (int j = i; j < ctx->car_count - 1; ++j) ctx->cars[j] = ctx->cars[j+1];
+            ctx->car_count--;
+        } else ++i;
+    }
+    // remove policies owned by user
+    for (int i = 0; i < ctx->policy_count; ) {
+        if (strcmp(ctx->policies[i].owner, username) == 0) {
+            append_operation_log(ctx, "DELETE_POLICY_CASCADE", ctx->policies[i].policy_id, username);
+            // remove related claims
+            for (int k = 0; k < ctx->claim_count; ) {
+                if (strcmp(ctx->claims[k].policy_id, ctx->policies[i].policy_id) == 0) {
+                    append_operation_log(ctx, "DELETE_CLAIM_CASCADE", ctx->claims[k].claim_id, ctx->policies[i].policy_id);
+                    for (int j = k; j < ctx->claim_count - 1; ++j) ctx->claims[j] = ctx->claims[j+1];
+                    ctx->claim_count--;
+                } else ++k;
+            }
+            for (int j = i; j < ctx->policy_count - 1; ++j) ctx->policies[j] = ctx->policies[j+1];
+            ctx->policy_count--;
+        } else ++i;
+    }
+    // remove claims where claimant is user
+    for (int i = 0; i < ctx->claim_count; ) {
+        if (strcmp(ctx->claims[i].claimant, username) == 0) {
+            append_operation_log(ctx, "DELETE_CLAIM_CASCADE", ctx->claims[i].claim_id, username);
+            for (int j = i; j < ctx->claim_count - 1; ++j) ctx->claims[j] = ctx->claims[j+1];
+            ctx->claim_count--;
+        } else ++i;
+    }
+    // remove user record
+    for (int i = 0; i < ctx->user_count; ++i) {
+        if (strcmp(ctx->users[i].username, username) == 0) {
+            for (int j = i; j < ctx->user_count - 1; ++j) ctx->users[j] = ctx->users[j+1];
+            ctx->user_count--;
+            append_operation_log(ctx, "DELETE_USER", username, "user removed with cascade");
+            break;
+        }
+    }
+    return 1;
+}

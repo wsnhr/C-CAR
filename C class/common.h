@@ -1,4 +1,3 @@
-
 #ifndef COMMON_H
 #define COMMON_H
 
@@ -146,7 +145,6 @@ int settle_claim(AppContext* ctx, const char* claim_id);
 
 void list_claims(const AppContext* ctx);
 
-
 /* ================= 用户管理 ================= */
 int user_exists(AppContext* ctx, const char* username);
 int register_user(AppContext* ctx);
@@ -207,7 +205,23 @@ int add_claim_for_current_user(AppContext* ctx, const char* claim_id,
 int settle_claim_for_current_user(AppContext* ctx, const char* claim_id);
 
 
+/* ================= 计算函数（供 GUI/保险逻辑使用） ================= */
+/* 根据车辆参数计算建议年保费（示例公式） */
+double calculate_premium_for_car(const Car* car);
+/* 根据保单与申请金额、车辆参数计算可批准的赔付金额（示例公式） */
+double calculate_payout_for_claim(const Policy* policy, const Car* car, double request_amount);
 
+/* ================= 操作日志 ================= */
+/* 记录每次的增删改操作：action 简短标识, target 为对象 (如 车牌/保单号), details 为可选文本 */
+void append_operation_log(const AppContext* ctx, const char* action, const char* target, const char* details);
+
+/* ================= 级联删除与自动状态更新 ================= */
+/* 级联删除：删除车辆时清理关联保单与理赔 */
+int cascade_remove_policies_and_claims_for_plate(AppContext* ctx, const char* plate);
+/* 级联删除：删除用户时清理其车辆/保单/理赔并删除用户记录 */
+int cascade_remove_for_user(AppContext* ctx, const char* username);
+/* 自动过期检查（根据保单 end_date 设置 active=0） */
+void update_policy_active_status(AppContext* ctx);
 
 #ifdef __cplusplus
 }
