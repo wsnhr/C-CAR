@@ -1,1 +1,9 @@
 2026-08-29 15:32:18 | user=admin | action=LOGIN | target=admin | details=user login
+2026-08-29 15:37:53 | user=admin | action=LOGIN | target=admin | details=user login
+2026-08-29 15:54:21 | user=admin | action=LOGIN | target=admin | details=user login
+2026-08-29 16:42:54 | user=(none) | action=ADD_USER | target=6666 | details=registered
+2026-08-29 16:43:18 | user=(none) | action=ADD_USER | target=666666 | details=registered
+2026-08-29 16:43:23 | user=666666 | action=LOGIN | target=666666 | details=user login
+2026-08-29 16:43:25 | user=666666 | action=LOGOUT | target=666666 | details=user logout
+2026-08-29 16:43:32 | user=666666 | action=LOGIN | target=666666 | details=user login
+2026-08-29 16:44:55 | user=666666 | action=ADD_CAR | target=666666 | details=666666

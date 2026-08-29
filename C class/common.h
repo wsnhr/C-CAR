@@ -222,6 +222,8 @@ int cascade_remove_policies_and_claims_for_plate(AppContext* ctx, const char* pl
 int cascade_remove_for_user(AppContext* ctx, const char* username);
 /* 自动过期检查（根据保单 end_date 设置 active=0） */
 void update_policy_active_status(AppContext* ctx);
+/* 新增：返回本地当前日期（年/月/日），在 gui.cpp 中有实现 */
+Date today_local(void);
 
 #ifdef __cplusplus
 }

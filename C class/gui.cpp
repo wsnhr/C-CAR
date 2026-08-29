@@ -4,6 +4,7 @@
 #include <wchar.h>
 #include <string.h>
 #include <ctype.h>
+#include <time.h> /* CHANGED: 添加 time.h 以使用 time()/localtime */
 #include "common.h"
 #include "gui.h"
 
@@ -30,6 +31,11 @@ typedef struct Button {
     const wchar_t* label;
     int id;
 } Button;
+
+/* 前置声明：在部分交互弹窗使用这些绘制/检测函数，定义在文件后部，但须先声明 */
+static int point_in_rect(int x, int y, const RECT* rect);
+static void draw_text_rect(const wchar_t* text, RECT rect, UINT format);
+static void draw_button(const Button* button);
 
 /* 屏幕/动作枚举：定义界面状态与按键动作常量，便于维护 */
 typedef enum { SCREEN_HOME, SCREEN_CARS, SCREEN_INSURANCE } Screen;
@@ -131,19 +137,148 @@ static int prompt_int_field(const wchar_t* title, const wchar_t* prompt, int* va
     return 1;
 }
 
-/* prompt_date_field：获取日期字段（年/月/日），以三个对话框顺序输入 */
+/* ========== 交互式日期选择器（鼠标点击） ========== */
+static int days_in_month(int year, int month)
+{
+    static const int mdays[] = { 31,28,31,30,31,30,31,31,30,31,30,31 };
+    if (month < 1 || month > 12) return 31;
+    if (month == 2) {
+        int leap = (year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
+        return 28 + leap;
+    }
+    return mdays[month - 1];
+}
+
 static int prompt_date_field(const wchar_t* title, Date* date, const Date* current)
 {
-    int year = current ? current->year : 2024;
-    int month = current ? current->month : 1;
-    int day = current ? current->day : 1;
-    if (!prompt_int_field(title, L"请输入年份（例如：2024）", &year, year)) return 0;
-    if (!prompt_int_field(title, L"请输入月份（1-12）", &month, month)) return 0;
-    if (!prompt_int_field(title, L"请输入日期（1-31）", &day, day)) return 0;
-    date->year = year;
-    date->month = month;
-    date->day = day;
-    return 1;
+    if (!date) return 0;
+    int year, month, day;
+    if (current) {
+        year = current->year;
+        month = current->month;
+        day = current->day;
+    } else {
+        time_t t = time(NULL);
+        struct tm tmv;
+    #ifdef _WIN32
+        localtime_s(&tmv, &t);
+    #else
+        localtime_r(&t, &tmv);
+    #endif
+        year = tmv.tm_year + 1900;
+        month = tmv.tm_mon + 1;
+        day = tmv.tm_mday;
+    }
+    if (year < 1900) year = 1900; if (year > 3000) year = 3000;
+    if (month < 1) month = 1; if (month > 12) month = 12;
+    int dim = days_in_month(year, month);
+    if (day < 1) day = 1; if (day > dim) day = dim;
+
+    int dialog_w = 520;
+    int dialog_h = 220;
+    int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
+    int dlg_top = CONTENT_TOP + ((CONTENT_BOTTOM - CONTENT_TOP) - dialog_h) / 2;
+    int dlg_right = dlg_left + dialog_w;
+    int dlg_bottom = dlg_top + dialog_h;
+
+    // layout
+    int group_w = 120;
+    int group_h = 48;
+    int spacing = 24;
+    int start_x = dlg_left + 40;
+    int y_top = dlg_top + 70;
+
+    // button areas
+    Button btns[8]; // year-, year+, month-, month+, day-, day+, confirm, cancel
+    for (int i = 0; i < 8; ++i) { btns[i].id = 0; btns[i].label = L""; btns[i].rect.left = btns[i].rect.top = btns[i].rect.right = btns[i].rect.bottom = 0; }
+
+    // draw helper
+    auto redraw = [&](void) {
+        // background
+        setlinecolor(RGB(120, 130, 150));
+        setfillcolor(RGB(255,255,255));
+        solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
+        // title
+        settextstyle(22,0,L"Segoe UI");
+        settextcolor(RGB(35,40,50));
+        RECT title_rect = { dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48 };
+        draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+        // description
+        settextstyle(18,0,L"Segoe UI");
+        RECT desc_rect = { dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 78 };
+        draw_text_rect(L"请选择日期：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+        // year group
+        int gx = start_x;
+        int gy = y_top;
+        // minus
+        btns[0].rect.left = gx; btns[0].rect.top = gy; btns[0].rect.right = gx + 36; btns[0].rect.bottom = gy + group_h; btns[0].label = L"-"; btns[0].id = 1; draw_button(&btns[0]);
+        // value box
+        RECT yr_rect = { gx + 42, gy, gx + 42 + group_w, gy + group_h };
+        wchar_t tmp[64]; _snwprintf_s(tmp, 64, _TRUNCATE, L"%04d", year);
+        settextstyle(20,0,L"Segoe UI"); settextcolor(RGB(35,40,50)); draw_text_rect(tmp, yr_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        // plus
+        btns[1].rect.left = gx + 42 + group_w + 8; btns[1].rect.top = gy; btns[1].rect.right = btns[1].rect.left + 36; btns[1].rect.bottom = gy + group_h; btns[1].label = L"+"; btns[1].id = 2; draw_button(&btns[1]);
+
+        // month group
+        gx += group_w + 36 + spacing;
+        btns[2].rect.left = gx; btns[2].rect.top = gy; btns[2].rect.right = gx + 36; btns[2].rect.bottom = gy + group_h; btns[2].label = L"-"; btns[2].id = 3; draw_button(&btns[2]);
+        RECT mo_rect = { gx + 42, gy, gx + 42 + group_w/2, gy + group_h };
+        _snwprintf_s(tmp, 64, _TRUNCATE, L"%02d", month);
+        settextstyle(20,0,L"Segoe UI"); draw_text_rect(tmp, mo_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        btns[3].rect.left = gx + 42 + group_w/2 + 8; btns[3].rect.top = gy; btns[3].rect.right = btns[3].rect.left + 36; btns[3].rect.bottom = gy + group_h; btns[3].label = L"+"; btns[3].id = 4; draw_button(&btns[3]);
+
+        // day group
+        gx += group_w/2 + 36 + spacing;
+        btns[4].rect.left = gx; btns[4].rect.top = gy; btns[4].rect.right = gx + 36; btns[4].rect.bottom = gy + group_h; btns[4].label = L"-"; btns[4].id = 5; draw_button(&btns[4]);
+        RECT day_rect = { gx + 42, gy, gx + 42 + group_w/2, gy + group_h };
+        _snwprintf_s(tmp, 64, _TRUNCATE, L"%02d", day);
+        settextstyle(20,0,L"Segoe UI"); draw_text_rect(tmp, day_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        btns[5].rect.left = gx + 42 + group_w/2 + 8; btns[5].rect.top = gy; btns[5].rect.right = btns[5].rect.left + 36; btns[5].rect.bottom = gy + group_h; btns[5].label = L"+"; btns[5].id = 6; draw_button(&btns[5]);
+
+        // confirm / cancel
+        int bw = 120; int bh = 44;
+        btns[6].rect.left = dlg_left + dialog_w - bw - 36; btns[6].rect.top = dlg_bottom - bh - 20; btns[6].rect.right = btns[6].rect.left + bw; btns[6].rect.bottom = btns[6].rect.top + bh; btns[6].label = L"确定"; btns[6].id = 7; draw_button(&btns[6]);
+        btns[7].rect.left = btns[6].rect.left - bw - 12; btns[7].rect.top = btns[6].rect.top; btns[7].rect.right = btns[7].rect.left + bw; btns[7].rect.bottom = btns[7].rect.top + bh; btns[7].label = L"取消"; btns[7].id = 0; draw_button(&btns[7]);
+
+        FlushBatchDraw();
+    };
+
+    // 初次绘制
+    redraw();
+
+    ExMessage msg;
+    while (1) {
+        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN) {
+            int mx = msg.x, my = msg.y;
+            // check buttons
+            for (int i = 0; i < 8; ++i) {
+                if (btns[i].id == 0) continue; // skip empty / cancel uses id 0 so skip here, will handle separately
+                if (point_in_rect(mx, my, &btns[i].rect)) {
+                    int id = btns[i].id;
+                    if (id == 1) { // year -
+                        if (year > 1900) year--; if (year < 1900) year = 1900; int dim2 = days_in_month(year, month); if (day > dim2) day = dim2; redraw(); continue;
+                    } else if (id == 2) { // year +
+                        if (year < 3000) year++; if (year > 3000) year = 3000; int dim2 = days_in_month(year, month); if (day > dim2) day = dim2; redraw(); continue;
+                    } else if (id == 3) { // month -
+                        month = month > 1 ? month - 1 : 12; int dim2 = days_in_month(year, month); if (day > dim2) day = dim2; redraw(); continue;
+                    } else if (id == 4) { // month +
+                        month = month < 12 ? month + 1 : 1; int dim2 = days_in_month(year, month); if (day > dim2) day = dim2; redraw(); continue;
+                    } else if (id == 5) { // day -
+                        day = day > 1 ? day - 1 : days_in_month(year, month); redraw(); continue;
+                    } else if (id == 6) { // day +
+                        int dim2 = days_in_month(year, month); day = day < dim2 ? day + 1 : 1; redraw(); continue;
+                    } else if (id == 7) { // confirm
+                        date->year = year; date->month = month; date->day = day; return 1;
+                    }
+                }
+            }
+            // 处理取消按钮（id == 0）或点击对话框外部视为取消
+            if (point_in_rect(mx, my, &btns[7].rect)) return 0;
+            if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom) return 0;
+        }
+        Sleep(10);
+    }
 }
 
 /* 将违章等级转换为中文文本，便于在界面显示 */
@@ -159,14 +294,89 @@ static const wchar_t* violation_to_text(ViolationLevel level)
     }
 }
 
-/* prompt_violation_field：输入违章等级（使用整数输入） */
+/* prompt_violation_field：输入违章等级（使用点击选择） */
 static int prompt_violation_field(const wchar_t* title, ViolationLevel* level, ViolationLevel current)
 {
-    int value = (int)current;
-    if (!prompt_int_field(title, L"请输入违章等级：0 无，1 较轻微，2 轻微，3 中等，4 较严重，5 严重", &value, value)) return 0;
-    if (value < VIOLATION_NONE || value > VIOLATION_SERIOUS) value = VIOLATION_NONE;
-    *level = (ViolationLevel)value;
-    return 1;
+    const wchar_t* names[] = { L"无", L"较轻微", L"轻微", L"中等", L"较严重", L"严重" };
+    const int count = 6;
+    // dialog dimensions
+    int dialog_w = 480;
+    int dialog_h = 200;
+    int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
+    int dlg_top = CONTENT_TOP + ((CONTENT_BOTTOM - CONTENT_TOP) - dialog_h) / 2;
+    int dlg_right = dlg_left + dialog_w;
+    int dlg_bottom = dlg_top + dialog_h;
+
+    setlinecolor(RGB(120, 130, 150));
+    setfillcolor(RGB(255, 255, 255));
+    solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
+    settextstyle(22, 0, L"Segoe UI");
+    settextcolor(RGB(35, 40, 50));
+    RECT title_rect = { dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48 };
+    draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    settextstyle(18, 0, L"Segoe UI");
+    RECT desc_rect = { dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84 };
+    draw_text_rect(L"请选择违章等级：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    int total_btn = count + 1; // cancel
+    int btn_w = 120;
+    int btn_h = 40;
+    int spacing = 12;
+    int total_width = total_btn * btn_w + (total_btn - 1) * spacing;
+    int start_x = dlg_left + (dialog_w - total_width) / 2;
+    int btn_y = dlg_bottom - btn_h - 20;
+
+    Button btns[8];
+    for (int i = 0; i < count; ++i) {
+        btns[i].rect.left = start_x + i * (btn_w + spacing);
+        btns[i].rect.top = btn_y;
+        btns[i].rect.right = btns[i].rect.left + btn_w;
+        btns[i].rect.bottom = btn_y + btn_h;
+        btns[i].label = names[i];
+        btns[i].id = i; // maps to ViolationLevel
+        // CHANGED: 在绘制时对默认/当前值做高亮（视觉提示）
+        if (i == (int)current) {
+            // draw highlighted background before normal button to indicate current selection
+            setfillcolor(RGB(230, 245, 255));
+            setlinecolor(RGB(100, 140, 180));
+            solidrectangle(btns[i].rect.left, btns[i].rect.top, btns[i].rect.right, btns[i].rect.bottom);
+            settextcolor(RGB(20, 60, 100));
+            settextstyle(18, 0, L"Segoe UI");
+            draw_text_rect(btns[i].label, btns[i].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        } else {
+            draw_button(&btns[i]);
+        }
+    }
+    int ci = count;
+    btns[ci].rect.left = start_x + ci * (btn_w + spacing);
+    btns[ci].rect.top = btn_y;
+    btns[ci].rect.right = btns[ci].rect.left + btn_w;
+    btns[ci].rect.bottom = btn_y + btn_h;
+    btns[ci].label = L"取消";
+    btns[ci].id = -1;
+    draw_button(&btns[ci]);
+
+    FlushBatchDraw();
+
+    ExMessage msg;
+    while (1) {
+        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN) {
+            int mx = msg.x;
+            int my = msg.y;
+            for (int i = 0; i < total_btn; ++i) {
+                if (point_in_rect(mx, my, &btns[i].rect)) {
+                    if (btns[i].id >= 0 && btns[i].id < count) {
+                        *level = (ViolationLevel)btns[i].id;
+                        return 1;
+                    }
+                    return 0; // cancel
+                }
+            }
+            if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom) return 0;
+        }
+        Sleep(10);
+    }
 }
 
 /* 判断当前是否已登录 */
@@ -433,22 +643,6 @@ static int compare_date_local(const Date* a, const Date* b)
     return 0;
 }
 
-static Date today_local(void)
-{
-    time_t t = time(NULL);
-    struct tm tmv;
-#ifdef _WIN32
-    localtime_s(&tmv, &t);
-#else
-    localtime_r(&t, &tmv);
-#endif
-    Date d;
-    d.year = tmv.tm_year + 1900;
-    d.month = tmv.tm_mon + 1;
-    d.day = tmv.tm_mday;
-    return d;
-}
-
 /* ========== 预定义保险产品 ========== */
 static const wchar_t* PRODUCT_NAMES_WIDE[] = { L"交强险", L"车损险", L"三者险" };
 static const double PRODUCT_COVERAGE_RATIO[] = { 0.30, 0.80, 1.00 };
@@ -458,7 +652,6 @@ static const int PRODUCT_COUNT = 3;
 /* ================= 操作处理 ================= */
 
 /* ========== 输入验证辅助实现（置于处理器之前，保证可见） ========== */
-#include <ctype.h>
 static int is_alnum_string(const char* s)
 {
     if (!s || s[0] == '\0') return 0;
@@ -498,6 +691,121 @@ static int validate_date(const Date* d)
     if (d->month < 1 || d->month > 12) return 0;
     if (d->day < 1 || d->day > 31) return 0;
     return 1;
+}
+
+/* ========== 交互式选择弹窗：产品选择（鼠标点击） ========== */
+static int prompt_product_choice(const wchar_t* title, int default_choice)
+{
+    // dialog dimensions inside content panel
+    int dialog_w = 520;
+    int dialog_h = 200;
+    int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
+    int dlg_top = CONTENT_TOP + ((CONTENT_BOTTOM - CONTENT_TOP) - dialog_h) / 2;
+    int dlg_right = dlg_left + dialog_w;
+    int dlg_bottom = dlg_top + dialog_h;
+
+    // draw dialog background
+    setlinecolor(RGB(120, 130, 150));
+    setfillcolor(RGB(255, 255, 255));
+    solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
+    // title
+    settextstyle(22, 0, L"Segoe UI");
+    settextcolor(RGB(35, 40, 50));
+    RECT title_rect = { dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48 };
+    draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    // description
+    settextstyle(18, 0, L"Segoe UI");
+    RECT desc_rect = { dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84 };
+    draw_text_rect(L"请选择保险产品：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    // buttons: product buttons + cancel
+    int total_btn = PRODUCT_COUNT + 1; // last = cancel
+    int btn_w = 140;
+    int btn_h = 44;
+    int spacing = 18;
+    int total_width = total_btn * btn_w + (total_btn - 1) * spacing;
+    int start_x = dlg_left + (dialog_w - total_width) / 2;
+    int btn_y = dlg_bottom - btn_h - 20;
+
+    Button btns[8]; // enough space (PRODUCT_COUNT small)
+    for (int i = 0; i < PRODUCT_COUNT; ++i) {
+        btns[i].rect.left = start_x + i * (btn_w + spacing);
+        btns[i].rect.top = btn_y;
+        btns[i].rect.right = btns[i].rect.left + btn_w;
+        btns[i].rect.bottom = btn_y + btn_h;
+        btns[i].label = PRODUCT_NAMES_WIDE[i];
+        btns[i].id = i + 1;
+        draw_button(&btns[i]);
+    }
+    // cancel button
+    int ci = PRODUCT_COUNT;
+    btns[ci].rect.left = start_x + ci * (btn_w + spacing);
+    btns[ci].rect.top = btn_y;
+    btns[ci].rect.right = btns[ci].rect.left + btn_w;
+    btns[ci].rect.bottom = btn_y + btn_h;
+    btns[ci].label = L"取消";
+    btns[ci].id = 0;
+    draw_button(&btns[ci]);
+
+    // CHANGED: 高亮显示默认选项
+    if (default_choice > 0 && default_choice <= PRODUCT_COUNT) {
+        setfillcolor(RGB(230, 245, 255));
+        setlinecolor(RGB(100, 140, 180));
+        solidrectangle(btns[default_choice - 1].rect.left, btns[default_choice - 1].rect.top, btns[default_choice - 1].rect.right, btns[default_choice - 1].rect.bottom);
+        settextcolor(RGB(20, 60, 100));
+        settextstyle(18, 0, L"Segoe UI");
+        draw_text_rect(btns[default_choice - 1].label, btns[default_choice - 1].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+    }
+
+    FlushBatchDraw();
+
+    // wait for click
+    ExMessage msg;
+    while (1) {
+        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN) {
+            int mx = msg.x;
+            int my = msg.y;
+            for (int i = 0; i < total_btn; ++i) {
+                if (point_in_rect(mx, my, &btns[i].rect)) {
+                    // small visual feedback: redraw pressed button (optional)
+                    setlinecolor(RGB(80, 90, 110));
+                    setfillcolor(RGB(220, 230, 240));
+                    solidrectangle(btns[i].rect.left, btns[i].rect.top, btns[i].rect.right, btns[i].rect.bottom);
+                    settextcolor(RGB(35, 40, 50));
+                    settextstyle(18, 0, L"Segoe UI");
+                    draw_text_rect(btns[i].label, btns[i].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    FlushBatchDraw();
+                    // consume event and return id
+                    return btns[i].id;
+                }
+            }
+            // click outside: treat as cancel
+            if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom) {
+                return 0;
+            }
+        }
+        Sleep(10);
+    }
+}
+
+// CHANGED: 新增 today_local 函数实现 -- 用于返回当前本地日期 (年/月/日)
+// 建议位置：放在文件辅助函数区（例如 days_in_month 之后或文件顶部），
+// 如果需要全局可见，请在 common.h 添加声明： Date today_local(void);
+static Date today_local(void)
+{
+    Date d;
+    time_t t = time(NULL);
+    struct tm tmv;
+#ifdef _WIN32
+    localtime_s(&tmv, &t);   // Windows 安全版本
+#else
+    localtime_r(&t, &tmv);   // POSIX 线程安全版本
+#endif
+    d.year = tmv.tm_year + 1900;
+    d.month = tmv.tm_mon + 1;
+    d.day = tmv.tm_mday;
+    return d;
 }
 
 static void handle_register(AppContext* ctx, GuiState* state)
@@ -592,7 +900,11 @@ static void handle_add_policy(AppContext* ctx, GuiState* state)
         strncpy(owner, ctx->current_user, sizeof(owner)-1); owner[sizeof(owner)-1] = '\0';
     }
     if (strcmp(owner, car->owner) != 0) { set_message(state, L"投保人必须为车辆所有者"); return; }
-    int choice = 1; if (!prompt_int_field(L"选择保险产品", L"请选择产品：1 交强险 2 车损险 3 三者险", &choice, 1)) return; if (choice < 1 || choice > PRODUCT_COUNT) { set_message(state, L"产品选择无效"); return; }
+
+    // Use clickable product selection
+    int choice = prompt_product_choice(L"选择保险产品", 1);
+    if (choice <= 0 || choice > PRODUCT_COUNT) { set_message(state, L"已取消产品选择"); return; }
+
     Date start = today_local(); Date end = start; end.year = start.year + 1; if (!prompt_date_field(L"保单生效日", &start, &start)) return; if (!prompt_date_field(L"保单失效日", &end, &end)) return; if (!validate_date(&start) || !validate_date(&end) || compare_date_local(&start, &end) > 0) { set_message(state, L"生效/失效日期不合法"); return; }
     char product_desc[64] = {0}; wchar_to_char(PRODUCT_NAMES_WIDE[choice - 1], product_desc, sizeof(product_desc));
     if (add_policy(ctx, policy_id, plate, owner, product_desc) == 0) {
