@@ -1,12 +1,7 @@
-﻿  car.c
-  file.c
-  insurance.c
-  user.c
-  gui.cpp
-  main.cpp
+﻿  gui.cpp
   正在生成代码
-  14 of 126 functions (11.1%) were compiled, the rest were copied from previous compilation.
-    4 functions were new in current compilation
-    19 functions had inline decision re-evaluated but remain unchanged
+  6 of 126 functions ( 4.8%) were compiled, the rest were copied from previous compilation.
+    1 functions were new in current compilation
+    2 functions had inline decision re-evaluated but remain unchanged
   已完成代码的生成
   C class.vcxproj -> D:\Github\C-CAR\x64\Release\C class.exe

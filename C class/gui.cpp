@@ -181,18 +181,28 @@ static int prompt_date_field(const wchar_t* title, Date* date, const Date* curre
     int dlg_right = dlg_left + dialog_w;
     int dlg_bottom = dlg_top + dialog_h;
 
-    // layout
-    int group_w = 120;
-    int group_h = 48;
-    int spacing = 24;
-    int start_x = dlg_left + 40;
+    // layout 参数（CHANGED: 用明确的 side/gap 值并按组计算总宽，避免重叠）
+    const int side_w = 36;           // 单侧按钮宽度（+/-）
+    const int gap_to_value = 6;      // 侧钮到数值框的空隙
+    const int gap_after_value = 8;   // 数值框到侧钮的空隙
+    const int spacing = 18;          // 组间间隔
+    const int group_w = 120;         // 年组数值框宽
+    const int small_group_w = group_w / 2; // 月/日组数值框宽
+    const int group_h = 48;
     int y_top = dlg_top + 70;
+
+    // 计算三组总宽并居中（CHANGED）
+    int group_total1 = side_w + gap_to_value + group_w + gap_after_value + side_w;
+    int group_total2 = side_w + gap_to_value + small_group_w + gap_after_value + side_w;
+    int group_total3 = group_total2;
+    int groups_total = group_total1 + group_total2 + group_total3 + spacing * 2;
+    int start_x = dlg_left + (dialog_w - groups_total) / 2;
 
     // button areas
     Button btns[8]; // year-, year+, month-, month+, day-, day+, confirm, cancel
     for (int i = 0; i < 8; ++i) { btns[i].id = 0; btns[i].label = L""; btns[i].rect.left = btns[i].rect.top = btns[i].rect.right = btns[i].rect.bottom = 0; }
 
-    // draw helper
+    // draw helper（使用按组布局避免重叠，CHANGED）
     auto redraw = [&](void) {
         // background
         setlinecolor(RGB(120, 130, 150));
@@ -208,33 +218,75 @@ static int prompt_date_field(const wchar_t* title, Date* date, const Date* curre
         RECT desc_rect = { dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 78 };
         draw_text_rect(L"请选择日期：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-        // year group
+        // YEAR group
         int gx = start_x;
         int gy = y_top;
-        // minus
-        btns[0].rect.left = gx; btns[0].rect.top = gy; btns[0].rect.right = gx + 36; btns[0].rect.bottom = gy + group_h; btns[0].label = L"-"; btns[0].id = 1; draw_button(&btns[0]);
-        // value box
-        RECT yr_rect = { gx + 42, gy, gx + 42 + group_w, gy + group_h };
-        wchar_t tmp[64]; _snwprintf_s(tmp, 64, _TRUNCATE, L"%04d", year);
-        settextstyle(20,0,L"Segoe UI"); settextcolor(RGB(35,40,50)); draw_text_rect(tmp, yr_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        // plus
-        btns[1].rect.left = gx + 42 + group_w + 8; btns[1].rect.top = gy; btns[1].rect.right = btns[1].rect.left + 36; btns[1].rect.bottom = gy + group_h; btns[1].label = L"+"; btns[1].id = 2; draw_button(&btns[1]);
+        // year minus
+        btns[0].rect.left = gx;
+        btns[0].rect.top = gy;
+        btns[0].rect.right = gx + side_w;
+        btns[0].rect.bottom = gy + group_h;
+        btns[0].label = L"-";
+        btns[0].id = 1;
+        draw_button(&btns[0]);
+        // year value box
+        RECT yr_rect = { gx + side_w + gap_to_value, gy, gx + side_w + gap_to_value + group_w, gy + group_h };
+        wchar_t tmp[64];
+        _snwprintf_s(tmp, 64, _TRUNCATE, L"%04d", year);
+        settextstyle(20,0,L"Segoe UI"); settextcolor(RGB(35,40,50));
+        draw_text_rect(tmp, yr_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        // year plus
+        btns[1].rect.left = yr_rect.right + gap_after_value;
+        btns[1].rect.top = gy;
+        btns[1].rect.right = btns[1].rect.left + side_w;
+        btns[1].rect.bottom = gy + group_h;
+        btns[1].label = L"+";
+        btns[1].id = 2;
+        draw_button(&btns[1]);
 
-        // month group
-        gx += group_w + 36 + spacing;
-        btns[2].rect.left = gx; btns[2].rect.top = gy; btns[2].rect.right = gx + 36; btns[2].rect.bottom = gy + group_h; btns[2].label = L"-"; btns[2].id = 3; draw_button(&btns[2]);
-        RECT mo_rect = { gx + 42, gy, gx + 42 + group_w/2, gy + group_h };
+        // move to month group (CHANGED: 正确偏移以避免与 year plus 重叠)
+        gx = gx + group_total1 + spacing;
+
+        // MONTH group
+        btns[2].rect.left = gx;
+        btns[2].rect.top = gy;
+        btns[2].rect.right = gx + side_w;
+        btns[2].rect.bottom = gy + group_h;
+        btns[2].label = L"-";
+        btns[2].id = 3;
+        draw_button(&btns[2]);
+        RECT mo_rect = { gx + side_w + gap_to_value, gy, gx + side_w + gap_to_value + small_group_w, gy + group_h };
         _snwprintf_s(tmp, 64, _TRUNCATE, L"%02d", month);
         settextstyle(20,0,L"Segoe UI"); draw_text_rect(tmp, mo_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        btns[3].rect.left = gx + 42 + group_w/2 + 8; btns[3].rect.top = gy; btns[3].rect.right = btns[3].rect.left + 36; btns[3].rect.bottom = gy + group_h; btns[3].label = L"+"; btns[3].id = 4; draw_button(&btns[3]);
+        btns[3].rect.left = mo_rect.right + gap_after_value;
+        btns[3].rect.top = gy;
+        btns[3].rect.right = btns[3].rect.left + side_w;
+        btns[3].rect.bottom = gy + group_h;
+        btns[3].label = L"+";
+        btns[3].id = 4;
+        draw_button(&btns[3]);
 
-        // day group
-        gx += group_w/2 + 36 + spacing;
-        btns[4].rect.left = gx; btns[4].rect.top = gy; btns[4].rect.right = gx + 36; btns[4].rect.bottom = gy + group_h; btns[4].label = L"-"; btns[4].id = 5; draw_button(&btns[4]);
-        RECT day_rect = { gx + 42, gy, gx + 42 + group_w/2, gy + group_h };
+        // move to day group
+        gx = gx + group_total2 + spacing;
+
+        // DAY group
+        btns[4].rect.left = gx;
+        btns[4].rect.top = gy;
+        btns[4].rect.right = gx + side_w;
+        btns[4].rect.bottom = gy + group_h;
+        btns[4].label = L"-";
+        btns[4].id = 5;
+        draw_button(&btns[4]);
+        RECT day_rect = { gx + side_w + gap_to_value, gy, gx + side_w + gap_to_value + small_group_w, gy + group_h };
         _snwprintf_s(tmp, 64, _TRUNCATE, L"%02d", day);
         settextstyle(20,0,L"Segoe UI"); draw_text_rect(tmp, day_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-        btns[5].rect.left = gx + 42 + group_w/2 + 8; btns[5].rect.top = gy; btns[5].rect.right = btns[5].rect.left + 36; btns[5].rect.bottom = gy + group_h; btns[5].label = L"+"; btns[5].id = 6; draw_button(&btns[5]);
+        btns[5].rect.left = day_rect.right + gap_after_value;
+        btns[5].rect.top = gy;
+        btns[5].rect.right = btns[5].rect.left + side_w;
+        btns[5].rect.bottom = gy + group_h;
+        btns[5].label = L"+";
+        btns[5].id = 6;
+        draw_button(&btns[5]);
 
         // confirm / cancel
         int bw = 120; int bh = 44;
@@ -299,6 +351,7 @@ static int prompt_violation_field(const wchar_t* title, ViolationLevel* level, V
 {
     const wchar_t* names[] = { L"无", L"较轻微", L"轻微", L"中等", L"较严重", L"严重" };
     const int count = 6;
+
     // dialog dimensions
     int dialog_w = 480;
     int dialog_h = 200;
@@ -307,6 +360,7 @@ static int prompt_violation_field(const wchar_t* title, ViolationLevel* level, V
     int dlg_right = dlg_left + dialog_w;
     int dlg_bottom = dlg_top + dialog_h;
 
+    // background + title
     setlinecolor(RGB(120, 130, 150));
     setfillcolor(RGB(255, 255, 255));
     solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
@@ -317,45 +371,81 @@ static int prompt_violation_field(const wchar_t* title, ViolationLevel* level, V
 
     settextstyle(18, 0, L"Segoe UI");
     RECT desc_rect = { dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84 };
-    draw_text_rect(L"请选择违章等级：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    // CHANGED: 文案使用“违章记录”以与表头一致
+    draw_text_rect(L"请选择违章记录：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    int total_btn = count + 1; // cancel
-    int btn_w = 120;
+    // Two-row layout: first row up to 4 options, second row remaining + cancel
+    int max_first = 4;
+    int first_count = (count < max_first) ? count : max_first;
+    int remaining = count - first_count; // options placed in second row
+
+    int btn_w = 110;
     int btn_h = 40;
     int spacing = 12;
-    int total_width = total_btn * btn_w + (total_btn - 1) * spacing;
-    int start_x = dlg_left + (dialog_w - total_width) / 2;
-    int btn_y = dlg_bottom - btn_h - 20;
+
+    // positions
+    int row1_total_w = first_count * btn_w + (first_count - 1) * spacing;
+    int start_x_row1 = dlg_left + (dialog_w - row1_total_w) / 2;
+    int row1_y = dlg_top + 100; // upper row
+
+    int second_elements = (remaining > 0 ? remaining : 0) + 1; // remaining options + cancel
+    int row2_total_w = second_elements * btn_w + (second_elements - 1) * spacing;
+    int start_x_row2 = dlg_left + (dialog_w - row2_total_w) / 2;
+    int row2_y = dlg_bottom - btn_h - 20; // lower row
 
     Button btns[8];
-    for (int i = 0; i < count; ++i) {
-        btns[i].rect.left = start_x + i * (btn_w + spacing);
-        btns[i].rect.top = btn_y;
-        btns[i].rect.right = btns[i].rect.left + btn_w;
-        btns[i].rect.bottom = btn_y + btn_h;
-        btns[i].label = names[i];
-        btns[i].id = i; // maps to ViolationLevel
-        // CHANGED: 在绘制时对默认/当前值做高亮（视觉提示）
-        if (i == (int)current) {
-            // draw highlighted background before normal button to indicate current selection
+    int idx = 0;
+
+    // first row
+    for (int i = 0; i < first_count; ++i, ++idx) {
+        btns[idx].rect.left = start_x_row1 + i * (btn_w + spacing);
+        btns[idx].rect.top = row1_y;
+        btns[idx].rect.right = btns[idx].rect.left + btn_w;
+        btns[idx].rect.bottom = row1_y + btn_h;
+        btns[idx].label = names[idx];
+        btns[idx].id = idx;
+        if (idx == (int)current) {
             setfillcolor(RGB(230, 245, 255));
             setlinecolor(RGB(100, 140, 180));
-            solidrectangle(btns[i].rect.left, btns[i].rect.top, btns[i].rect.right, btns[i].rect.bottom);
+            solidrectangle(btns[idx].rect.left, btns[idx].rect.top, btns[idx].rect.right, btns[idx].rect.bottom);
             settextcolor(RGB(20, 60, 100));
             settextstyle(18, 0, L"Segoe UI");
-            draw_text_rect(btns[i].label, btns[i].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+            draw_text_rect(btns[idx].label, btns[idx].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
         } else {
-            draw_button(&btns[i]);
+            draw_button(&btns[idx]);
         }
     }
-    int ci = count;
-    btns[ci].rect.left = start_x + ci * (btn_w + spacing);
-    btns[ci].rect.top = btn_y;
-    btns[ci].rect.right = btns[ci].rect.left + btn_w;
-    btns[ci].rect.bottom = btn_y + btn_h;
-    btns[ci].label = L"取消";
-    btns[ci].id = -1;
-    draw_button(&btns[ci]);
+
+    // second row: remaining options
+    for (int j = 0; j < remaining; ++j, ++idx) {
+        int opt = first_count + j;
+        btns[idx].rect.left = start_x_row2 + j * (btn_w + spacing);
+        btns[idx].rect.top = row2_y;
+        btns[idx].rect.right = btns[idx].rect.left + btn_w;
+        btns[idx].rect.bottom = row2_y + btn_h;
+        btns[idx].label = names[opt];
+        btns[idx].id = opt;
+        if (opt == (int)current) {
+            setfillcolor(RGB(230, 245, 255));
+            setlinecolor(RGB(100, 140, 180));
+            solidrectangle(btns[idx].rect.left, btns[idx].rect.top, btns[idx].rect.right, btns[idx].rect.bottom);
+            settextcolor(RGB(20, 60, 100));
+            settextstyle(18, 0, L"Segoe UI");
+            draw_text_rect(btns[idx].label, btns[idx].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        } else {
+            draw_button(&btns[idx]);
+        }
+    }
+
+    // cancel on second row at the end
+    btns[idx].rect.left = start_x_row2 + (second_elements - 1) * (btn_w + spacing);
+    btns[idx].rect.top = row2_y;
+    btns[idx].rect.right = btns[idx].rect.left + btn_w;
+    btns[idx].rect.bottom = row2_y + btn_h;
+    btns[idx].label = L"取消";
+    btns[idx].id = -1;
+    draw_button(&btns[idx]);
+    ++idx;
 
     FlushBatchDraw();
 
@@ -364,7 +454,7 @@ static int prompt_violation_field(const wchar_t* title, ViolationLevel* level, V
         if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN) {
             int mx = msg.x;
             int my = msg.y;
-            for (int i = 0; i < total_btn; ++i) {
+            for (int i = 0; i < idx; ++i) {
                 if (point_in_rect(mx, my, &btns[i].rect)) {
                     if (btns[i].id >= 0 && btns[i].id < count) {
                         *level = (ViolationLevel)btns[i].id;
@@ -561,7 +651,8 @@ static void draw_cars(const AppContext* ctx, const GuiState* state, const Button
     draw_message_box(state);
     for (i = 0; i < count; ++i) draw_button(&buttons[i]);
     draw_content_panel();
-    draw_table_header(L"车牌    品牌        型号        车主        违章    购入日期     价格");
+    /* CHANGED: 将表头“违章”改为“违章记录” */
+    draw_table_header(L"车牌    品牌        型号        车主        违章记录     购入日期     价格");
     int indices[MAX_CARS] = { 0 };
     int total = collect_visible_cars(ctx, state->car_show_mine, indices, MAX_CARS);
     int page = state->car_page;
