@@ -1,7 +1,7 @@
 #define _CRT_SECURE_NO_WARNINGS
 #include "common.h"
 
-/* ================= 用户数据持久化 ================= */
+/* ================= 用户数据持久化 ================= 
 /* 保存新增用户：采用追加写入 */
 int save_users(const AppContext* ctx)
 {
@@ -21,8 +21,9 @@ int save_users(const AppContext* ctx)
     /*
         只保存最后一个新用户
     */
-    fprintf(fp, "%s %s\n",
+    fprintf(fp, "%s %s %s\n",
         ctx->users[ctx->user_count - 1].username,
+        ctx->users[ctx->user_count - 1].salt,
         ctx->users[ctx->user_count - 1].password);
 
     fclose(fp);
@@ -43,9 +44,10 @@ int load_users(AppContext* ctx)
     ctx->user_count = 0;
 
     while (ctx->user_count < MAX_USERS &&
-        fscanf(fp, "%19s %19s",
+        fscanf(fp, "%19s %32s %64s",
             ctx->users[ctx->user_count].username,
-            ctx->users[ctx->user_count].password) == 2)
+            ctx->users[ctx->user_count].salt,
+            ctx->users[ctx->user_count].password) == 3)
     {
         ctx->user_count++;
     }

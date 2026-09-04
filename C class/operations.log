@@ -10,3 +10,14 @@
 2026-09-03 20:27:07 | user=admin | action=LOGIN | target=admin | details=user login
 2026-09-03 20:28:42 | user=admin | action=ADD_POLICY | target=123123 | details=³µËðÏÕ
 2026-09-03 20:32:14 | user=admin | action=ADD_CAR | target=555555 | details=nhr
+2026-09-04 19:24:53 | user=(none) | action=LOGOUT | target= | details=user logout
+2026-09-04 19:55:21 | user=(none) | action=ADD_USER | target=xyy | details=registered
+2026-09-04 19:55:29 | user=xyy | action=LOGIN | target=xyy | details=user login
+2026-09-04 19:56:04 | user=xyy | action=ADD_CAR | target=666 | details=xyy
+2026-09-04 19:56:53 | user=xyy | action=MODIFY_CAR | target=666 | details=modified
+2026-09-04 19:57:17 | user=xyy | action=ADD_POLICY | target=666 | details=³µËðÏÕ
+2026-09-04 19:57:59 | user=xyy | action=ADD_CLAIM | target=666 | details=666
+2026-09-04 19:58:12 | user=xyy | action=SETTLE_CLAIM | target=666 | details=settled
+2026-09-04 22:55:48 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-04 22:58:34 | user=(none) | action=ADD_USER | target=nhr | details=registered
+2026-09-04 22:58:40 | user=nhr | action=LOGIN | target=nhr | details=user login

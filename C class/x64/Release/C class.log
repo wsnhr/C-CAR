@@ -1,11 +1,16 @@
-﻿  main.c
+﻿  car.c
+  file.c
+  insurance.c
+  main.c
+  user.c
+  gui.c
   gui_car.c
   gui_common.c
   gui_home.c
   gui_insurance.c
   正在生成代码
-  1 of 125 functions ( 0.8%) were compiled, the rest were copied from previous compilation.
-    0 functions were new in current compilation
+  20 of 136 functions (14.7%) were compiled, the rest were copied from previous compilation.
+    11 functions were new in current compilation
     0 functions had inline decision re-evaluated but remain unchanged
   已完成代码的生成
-  C class.vcxproj -> D:\C-CAR\C-CAR\x64\Release\C class.exe
+  C class.vcxproj -> D:\Github\C-CAR\x64\Release\C class.exe

@@ -20,7 +20,12 @@ extern "C" {
 // ---------- 用户 ----------
 typedef struct {
     char username[20];
-    char password[20];
+    /* 存储盐值和加盐哈希（十六进制字符串）
+       salt:     16 字节随机盐 -> 32 个 hex 字符 + 结尾 NUL
+       password: 32 字节哈希结果 -> 64 个 hex 字符 + 结尾 NUL
+       注意：这里保存的是哈希值，不是明文密码 */
+    char salt[33];
+    char password[65];
 } User;
 
 // ---------- 违章等级枚举 ----------
@@ -224,6 +229,18 @@ int cascade_remove_for_user(AppContext* ctx, const char* username);
 void update_policy_active_status(AppContext* ctx);
 /* 新增：返回本地当前日期（年/月/日），在 gui.cpp 中有实现 */
 Date today_local(void);
+
+/* ================= 密码哈希 / 加盐（在 user.c 中实现） ================= */
+/* 生成随机盐（字节），成功返回 1 */
+int generate_salt(unsigned char* salt, int len);
+/* 计算加盐哈希：SHA256(salt || password) -> out（32 字节），成功返回 1 */
+int hash_password(const char* password, const unsigned char* salt, int salt_len, unsigned char out[32]);
+/* 将二进制数据编码为十六进制字符串（不带 0x），out 缓冲区至少需要 in_len*2+1 字节 */
+void hex_encode(const unsigned char* in, int in_len, char* out_hex);
+/* 将十六进制字符串解码为二进制，out_len 为输出缓冲区大小，返回解码出的字节数，出错返回 -1 */
+int hex_decode(const char* hex, unsigned char* out, int out_len);
+/* 常量时间比较（登录校验用），两者相等返回 1 */
+int secure_compare(const unsigned char* a, const unsigned char* b, int len);
 
 #ifdef __cplusplus
 }
