@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="main.cpp">
+    <ClCompile Include="main.c">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="car.c">
@@ -30,7 +30,19 @@
     <ClCompile Include="insurance.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="gui.cpp">
+    <ClCompile Include="gui.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="gui_common.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="gui_home.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="gui_car.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="gui_insurance.c">
       <Filter>源文件</Filter>
     </ClCompile>
   </ItemGroup>
@@ -39,6 +51,9 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="gui.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="gui_internal.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

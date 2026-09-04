@@ -2,7 +2,7 @@
 #include "common.h"
 #include "gui.h"
 
-int main()
+int main(void)
 {
     AppContext ctx;
     init_app(&ctx);
