@@ -63,10 +63,11 @@ static void draw_ui(const AppContext* ctx, const GuiState* state)
             {{20, 276, 200, 316}, L"保单列表", INS_LIST_POLICIES},
             {{20, 328, 200, 368}, L"新增理赔", INS_ADD_CLAIM},
             {{20, 380, 200, 420}, L"理赔列表", INS_LIST_CLAIMS},
-            {{20, 432, 200, 472}, L"结案", INS_SETTLE_CLAIM},
-            {{20, 484, 95, 524}, L"上一页", INS_PREV},
-            {{125, 484, 200, 524}, L"下一页", INS_NEXT},
-            {{20, 544, 200, 584}, L"返回", INS_BACK}
+            {{20, 432, 200, 472}, L"审核理赔", INS_REVIEW_CLAIM},
+            {{20, 484, 200, 524}, L"结案理赔", INS_SETTLE_CLAIM},
+            {{20, 536, 95, 576}, L"上一页", INS_PREV},
+            {{125, 536, 200, 576}, L"下一页", INS_NEXT},
+            {{20, 588, 200, 628}, L"返回", INS_BACK}
         };
         draw_insurance(ctx, state, buttons, (int)(sizeof(buttons) / sizeof(buttons[0])));
     }

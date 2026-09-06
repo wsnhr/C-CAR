@@ -4,6 +4,7 @@
 
 int main(void)
 {
+//	FreeConsole(); // 关闭控制台窗口
     AppContext ctx;
     init_app(&ctx);
     gui_run(&ctx);

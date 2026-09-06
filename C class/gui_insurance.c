@@ -16,6 +16,16 @@ static void format_policy_line(const Policy* policy, wchar_t* line, size_t count
     _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-8s %-10s %.2f %.2f %-8s %s", policy_id, plate, owner, policy->coverage_limit, policy->premium, policy->active ? L"有效" : L"失效", desc);
 }
 
+static const wchar_t* claim_status_text_wide(int status)
+{
+    switch (status) {
+    case CLAIM_APPROVED: return L"已通过";
+    case CLAIM_SETTLED:  return L"已结案";
+    case CLAIM_REJECTED: return L"已驳回";
+    default:             return L"待审核";
+    }
+}
+
 static void format_claim_line(const Claim* claim, wchar_t* line, size_t count)
 {
     wchar_t claim_id[40], policy_id[40], plate[32], claimant[64], desc[96];
@@ -24,7 +34,7 @@ static void format_claim_line(const Claim* claim, wchar_t* line, size_t count)
     char_to_wchar(claim->plate, plate, 32);
     char_to_wchar(claim->claimant, claimant, 64);
     char_to_wchar(claim->description, desc, 96);
-    _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-10s %-8s %-10s %.2f %.2f %-8s %s", claim_id, policy_id, plate, claimant, claim->request_amount, claim->approved_amount, claim->settled ? L"已结" : L"未结", desc);
+    _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-10s %-8s %-10s %.2f %.2f %-8s %s", claim_id, policy_id, plate, claimant, claim->request_amount, claim->approved_amount, claim_status_text_wide(claim->status), desc);
 }
 
 void draw_insurance(const AppContext* ctx, const GuiState* state, const Button* buttons, int count)
@@ -215,22 +225,55 @@ static void handle_add_claim(AppContext* ctx, GuiState* state)
     if (add_claim_for_current_user(ctx, claim_id, policy_id, claimant, desc, amount)) { save_claims(ctx); append_operation_log(ctx, "ADD_CLAIM", claim_id, desc); set_message(state, L"提交理赔成功"); state->insurance_view = VIEW_CLAIM_LIST; state->claim_page = 0; } else set_message(state, L"提交理赔失败");
 }
 
-static void handle_settle_claim(AppContext* ctx, GuiState* state)
+static void handle_review_claim(AppContext* ctx, GuiState* state)
 {
     char claim_id[24] = {0};
-    if (!prompt_char_field(L"结案理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), "")) return;
+    char choice[8] = {0};
+    if (!prompt_char_field(L"审核理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), "")) return;
+    if (!is_admin(ctx)) {
+        set_message(state, L"只有管理员才能审核理赔");
+        return;
+    }
     Claim* c = find_claim(ctx, claim_id);
     if (!c) {
         set_message(state, L"未找到理赔单");
         return;
     }
-    if (!is_admin(ctx) && strcmp(c->claimant, ctx->current_user) != 0) {
-        set_message(state, L"只能结案当前用户提交的理赔");
+    if (c->status != CLAIM_PENDING) {
+        set_message(state, L"该理赔单已审核过，无法重复审核");
+        return;
+    }
+    if (!prompt_char_field(L"审核理赔", L"输入 1=通过，0=驳回：", choice, sizeof(choice), "1")) return;
+    int approve = (choice[0] == '1');
+    if (review_claim_for_current_user(ctx, claim_id, approve)) {
+        save_claims(ctx);
+        append_operation_log(ctx, "REVIEW_CLAIM", claim_id, approve ? "approved" : "rejected");
+        set_message(state, approve ? L"审核通过，等待结案" : L"已驳回该理赔申请");
+    } else {
+        set_message(state, L"审核操作失败");
+    }
+}
+
+static void handle_settle_claim(AppContext* ctx, GuiState* state)
+{
+    char claim_id[24] = {0};
+    if (!prompt_char_field(L"结案理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), "")) return;
+    if (!is_admin(ctx)) {
+        set_message(state, L"只有管理员才能结案理赔");
+        return;
+    }
+    Claim* c = find_claim(ctx, claim_id);
+    if (!c) {
+        set_message(state, L"未找到理赔单");
+        return;
+    }
+    if (c->status != CLAIM_APPROVED) {
+        set_message(state, L"该理赔单尚未审核通过，无法结案");
         return;
     }
     if (settle_claim_for_current_user(ctx, claim_id)) {
         save_claims(ctx);
-        append_operation_log(ctx, "SETTLE_CLAIM", claim_id, "settled");
+        append_operation_log(ctx, "SETTLE_CLAIM", claim_id, "settled by admin");
         set_message(state, L"理赔结案成功");
     } else {
         set_message(state, L"理赔结案失败");
@@ -249,6 +292,7 @@ void handle_insurance_action(AppContext* ctx, GuiState* state, int action)
     case INS_LIST_POLICIES: state->insurance_view = VIEW_POLICY_LIST; state->policy_page = 0; set_message(state, L"显示保单列表"); break;
     case INS_ADD_CLAIM: handle_add_claim(ctx, state); break;
     case INS_LIST_CLAIMS: state->insurance_view = VIEW_CLAIM_LIST; state->claim_page = 0; set_message(state, L"显示理赔列表"); break;
+    case INS_REVIEW_CLAIM: handle_review_claim(ctx, state); break;
     case INS_SETTLE_CLAIM: handle_settle_claim(ctx, state); break;
     case INS_PREV: if (*page > 0) (*page)--; break;
     case INS_NEXT: if (*page + 1 < total_pages) (*page)++; break;
@@ -257,4 +301,4 @@ void handle_insurance_action(AppContext* ctx, GuiState* state, int action)
     }
 }
 
-int hit_test_insurance(int x, int y) { Button buttons[] = { {{20, 120, 200, 160}, L"", INS_ADD_POLICY}, {{20, 172, 200, 212}, L"", INS_DELETE_POLICY}, {{20, 224, 200, 264}, L"", INS_FIND_POLICY}, {{20, 276, 200, 316}, L"", INS_LIST_POLICIES}, {{20, 328, 200, 368}, L"", INS_ADD_CLAIM}, {{20, 380, 200, 420}, L"", INS_LIST_CLAIMS}, {{20, 432, 200, 472}, L"", INS_SETTLE_CLAIM}, {{20, 484, 95, 524}, L"", INS_PREV}, {{125, 484, 200, 524}, L"", INS_NEXT}, {{20, 544, 200, 584}, L"", INS_BACK} }; return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y); }
+int hit_test_insurance(int x, int y) { Button buttons[] = { {{20, 120, 200, 160}, L"", INS_ADD_POLICY}, {{20, 172, 200, 212}, L"", INS_DELETE_POLICY}, {{20, 224, 200, 264}, L"", INS_FIND_POLICY}, {{20, 276, 200, 316}, L"", INS_LIST_POLICIES}, {{20, 328, 200, 368}, L"", INS_ADD_CLAIM}, {{20, 380, 200, 420}, L"", INS_LIST_CLAIMS}, {{20, 432, 200, 472}, L"", INS_REVIEW_CLAIM}, {{20, 484, 200, 524}, L"", INS_SETTLE_CLAIM}, {{20, 536, 95, 576}, L"", INS_PREV}, {{125, 536, 200, 576}, L"", INS_NEXT}, {{20, 588, 200, 628}, L"", INS_BACK} }; return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y); }

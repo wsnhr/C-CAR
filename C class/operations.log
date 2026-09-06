@@ -21,3 +21,6 @@
 2026-09-04 22:55:48 | user=admin | action=LOGIN | target=admin | details=user login
 2026-09-04 22:58:34 | user=(none) | action=ADD_USER | target=nhr | details=registered
 2026-09-04 22:58:40 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-06 20:38:23 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-06 20:39:59 | user=nhr | action=ADD_CLAIM | target=666666 | details=нч
+2026-09-06 20:42:01 | user=nhr | action=ADD_CAR | target=456456 | details=nhr

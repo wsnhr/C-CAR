@@ -1,6 +1,10 @@
 D:\Github\C-CAR\C class\car.c;D:\Github\C-CAR\C class\Debug\car.obj
-D:\Github\C-CAR\C class\gui.cpp;D:\Github\C-CAR\C class\Debug\gui.obj
-D:\Github\C-CAR\C class\main.cpp;D:\Github\C-CAR\C class\Debug\main.obj
+D:\Github\C-CAR\C class\gui.c;D:\Github\C-CAR\C class\Debug\gui.obj
+D:\Github\C-CAR\C class\gui_common.c;D:\Github\C-CAR\C class\Debug\gui_common.obj
+D:\Github\C-CAR\C class\gui_home.c;D:\Github\C-CAR\C class\Debug\gui_home.obj
+D:\Github\C-CAR\C class\gui_car.c;D:\Github\C-CAR\C class\Debug\gui_car.obj
+D:\Github\C-CAR\C class\gui_insurance.c;D:\Github\C-CAR\C class\Debug\gui_insurance.obj
+D:\Github\C-CAR\C class\main.c;D:\Github\C-CAR\C class\Debug\main.obj
 D:\Github\C-CAR\C class\user.c;D:\Github\C-CAR\C class\Debug\user.obj
 D:\Github\C-CAR\C class\file.c;D:\Github\C-CAR\C class\Debug\file.obj
 D:\Github\C-CAR\C class\insurance.c;D:\Github\C-CAR\C class\Debug\insurance.obj

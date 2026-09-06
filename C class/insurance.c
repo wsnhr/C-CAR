@@ -299,7 +299,7 @@ int add_claim(AppContext* ctx, const char* claim_id, const char* policy_id, cons
 
     c->request_amount = request_amount;
     c->approved_amount = calculate_payout_for_claim(p, car, request_amount);
-    c->settled = 0;
+    c->status = CLAIM_PENDING;  /* 新提交的理赔单默认为待审核 */
     c->claim_date.year = c->claim_date.month = c->claim_date.day = 0;
 
     ctx->claim_count++;
@@ -314,12 +314,23 @@ Claim* find_claim(AppContext* ctx, const char* claim_id) {
     return &ctx->claims[idx];
 }
 
-/* 结案理赔：标记已结案（如果要模拟支付可在此处返回 approved_amount 或写入支付记录） */
+/* 审核理赔（管理员）：approve=1 审核通过，approve=0 审核驳回 */
+int review_claim(AppContext* ctx, const char* claim_id, int approve) {
+    if (!ctx || !claim_id) return -1;
+    int idx = find_claim_index(ctx, claim_id);
+    if (idx == -1) return -1;
+    if (ctx->claims[idx].status != CLAIM_PENDING) return -1; /* 只有待审核的单子才能审核 */
+    ctx->claims[idx].status = approve ? CLAIM_APPROVED : CLAIM_REJECTED;
+    return 0;
+}
+
+/* 结案理赔（管理员）：仅对审核通过的理赔单结案，标记为已结案 */
 int settle_claim(AppContext* ctx, const char* claim_id) {
     if (!ctx || !claim_id) return -1;
     int idx = find_claim_index(ctx, claim_id);
     if (idx == -1) return -1;
-    ctx->claims[idx].settled = 1;
+    if (ctx->claims[idx].status != CLAIM_APPROVED) return -1; /* 只有审核通过的单子才能结案 */
+    ctx->claims[idx].status = CLAIM_SETTLED;
     // 这里可以记录实际支付金额、时间等。示例仅做逻辑标记。
     return 0;
 }
@@ -341,6 +352,16 @@ void list_policies(const AppContext* ctx) {
     }
 }
 
+/* 理赔状态转中文文本 */
+static const char* claim_status_text(int status) {
+    switch (status) {
+    case CLAIM_APPROVED: return "已通过";
+    case CLAIM_SETTLED:  return "已结案";
+    case CLAIM_REJECTED: return "已驳回";
+    default:             return "待审核";
+    }
+}
+
 /* 列出理赔（便于调试） */
 void list_claims(const AppContext* ctx) {
     if (!ctx) return;
@@ -352,10 +373,10 @@ void list_claims(const AppContext* ctx) {
     printf("-----------------------------------------------------------------------------\n");
     for (int i = 0; i < ctx->claim_count; ++i) {
         const Claim* c = &ctx->claims[i];
-        printf("%-4d  %-12s  %-12s  %-8s  %-8.2f  %-8.2f  %-4s  %-8s  %s\n",
+        printf("%-4d  %-12s  %-12s  %-8s  %-8.2f  %-8.2f  %-8s  %-8s  %s\n",
                i+1, c->claim_id, c->policy_id, c->plate,
                c->request_amount, c->approved_amount,
-               c->settled ? "已结" : "未结", c->claimant, c->description);
+               claim_status_text(c->status), c->claimant, c->description);
     }
 }
 
@@ -513,23 +534,25 @@ int add_claim_for_current_user(AppContext* ctx, const char* claim_id,
 
     return add_claim(ctx, claim_id, policy_id, claimant, description, request_amount) == 0;
 }
-/* 以当前用户身份结案理赔 */
-int settle_claim_for_current_user(AppContext* ctx, const char* claim_id)
+/* 以当前用户身份审核理赔（仅管理员） */
+int review_claim_for_current_user(AppContext* ctx, const char* claim_id, int approve)
 {
-    Claim* claim;
-
     if (!ctx || !claim_id)
         return 0;
 
-    if (!app_is_logged_in(ctx))
+    if (!app_is_admin(ctx))
+        return 0; /* 只有管理员可以审核 */
+
+    return review_claim(ctx, claim_id, approve) == 0;
+}
+/* 以当前用户身份结案理赔（仅管理员） */
+int settle_claim_for_current_user(AppContext* ctx, const char* claim_id)
+{
+    if (!ctx || !claim_id)
         return 0;
 
-    claim = find_claim(ctx, claim_id);
-    if (!claim)
-        return 0;
-
-    if (!app_is_admin(ctx) && strcmp(claim->claimant, ctx->current_user) != 0)
-        return 0;
+    if (!app_is_admin(ctx))
+        return 0; /* 只有管理员可以结案理赔 */
 
     return settle_claim(ctx, claim_id) == 0;
 }

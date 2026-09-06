@@ -10,7 +10,7 @@ extern "C" {
 #include <string.h>
 #include <stdlib.h>
 #include <time.h>
-
+//#include<Windows.h>
 /* 系统容量上限 */
 #define MAX_USERS    100
 #define MAX_CARS     100
@@ -69,6 +69,12 @@ typedef struct {
     char coverage_desc[64];
 } Policy;
 
+/* 理赔单状态 */
+#define CLAIM_PENDING   0   /* 待审核：用户已提交，等待管理员审核 */
+#define CLAIM_APPROVED  1   /* 审核通过：管理员已审核，等待结案 */
+#define CLAIM_SETTLED   2   /* 已结案：管理员已完成理赔结案 */
+#define CLAIM_REJECTED  3   /* 审核驳回：管理员驳回了该申请 */
+
 // ---------- 理赔 ----------
 typedef struct {
     char claim_id[24];
@@ -78,7 +84,8 @@ typedef struct {
     char description[256];
     double request_amount;
     double approved_amount;
-    int settled;
+    /* 理赔状态：0=待审核 1=审核通过 2=已结案 3=审核驳回 */
+    int status;
     Date claim_date;
 } Claim;
 
@@ -146,6 +153,9 @@ int add_claim(AppContext* ctx, const char* claim_id,
 
 Claim* find_claim(AppContext* ctx, const char* claim_id);
 
+/* 审核理赔（管理员）：approve=1 审核通过，approve=0 审核驳回 */
+int review_claim(AppContext* ctx, const char* claim_id, int approve);
+/* 结案理赔（管理员）：仅对审核通过的理赔单结案 */
 int settle_claim(AppContext* ctx, const char* claim_id);
 
 void list_claims(const AppContext* ctx);
@@ -207,6 +217,9 @@ int remove_policy_for_current_user(AppContext* ctx, const char* policy_id);
 int add_claim_for_current_user(AppContext* ctx, const char* claim_id,
     const char* policy_id, const char* requested_claimant,
     const char* description, double request_amount);
+/* 以当前用户身份审核理赔（仅管理员） */
+int review_claim_for_current_user(AppContext* ctx, const char* claim_id, int approve);
+/* 以当前用户身份结案理赔（仅管理员） */
 int settle_claim_for_current_user(AppContext* ctx, const char* claim_id);
 
 
