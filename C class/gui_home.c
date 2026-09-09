@@ -7,24 +7,30 @@
  * 只负责判断鼠标落在哪个按钮。三者分离后职责更清楚。
  */
 
-static const Button HOME_ADMIN_BUTTONS[] = {{{20, 120, 200, 165}, L"注册", HOME_REGISTER},
+static const Button HOME_GUEST_BUTTONS[] = {{{20, 120, 200, 165}, L"注册", HOME_REGISTER},
                                             {{20, 180, 200, 225}, L"登录", HOME_LOGIN},
-                                            {{20, 240, 200, 285}, L"登出", HOME_LOGOUT},
-                                            {{20, 300, 200, 345}, L"车辆管理", HOME_CARS},
-                                            {{20, 360, 200, 405}, L"保单管理", HOME_INSURANCE},
-                                            {{20, 420, 200, 465}, L"删除用户", HOME_DELETE_USER},
-                                            {{20, 480, 200, 525}, L"退出", HOME_EXIT}};
+                                            {{20, 240, 200, 285}, L"找回密码", HOME_FORGOT_PASSWORD},
+                                            {{20, 300, 200, 345}, L"退出", HOME_EXIT}};
 
-static const Button HOME_USER_BUTTONS[] = {{{20, 120, 200, 165}, L"注册", HOME_REGISTER},
-                                           {{20, 180, 200, 225}, L"登录", HOME_LOGIN},
-                                           {{20, 240, 200, 285}, L"登出", HOME_LOGOUT},
-                                           {{20, 300, 200, 345}, L"车辆管理", HOME_CARS},
-                                           {{20, 360, 200, 405}, L"保单管理", HOME_INSURANCE},
-                                           {{20, 420, 200, 465}, L"退出", HOME_EXIT}};
+static const Button HOME_USER_BUTTONS[] = {{{20, 120, 200, 165}, L"登出", HOME_LOGOUT},
+                                           {{20, 180, 200, 225}, L"车辆管理", HOME_CARS},
+                                           {{20, 240, 200, 285}, L"保单管理", HOME_INSURANCE},
+                                           {{20, 300, 200, 345}, L"退出", HOME_EXIT}};
+
+static const Button HOME_ADMIN_BUTTONS[] = {{{20, 120, 200, 165}, L"登出", HOME_LOGOUT},
+                                            {{20, 180, 200, 225}, L"车辆管理", HOME_CARS},
+                                            {{20, 240, 200, 285}, L"保单管理", HOME_INSURANCE},
+                                            {{20, 300, 200, 345}, L"删除用户", HOME_DELETE_USER},
+                                            {{20, 360, 200, 405}, L"退出", HOME_EXIT}};
 
 /* 绘制和命中检测都通过这里取得同一份按钮定义，避免坐标不一致。 */
 static const Button *home_buttons(const AppContext *ctx, int *count)
 {
+    if (!app_is_logged_in(ctx))
+    {
+        *count = (int)(sizeof(HOME_GUEST_BUTTONS) / sizeof(HOME_GUEST_BUTTONS[0]));
+        return HOME_GUEST_BUTTONS;
+    }
     if (app_is_admin(ctx))
     {
         *count = (int)(sizeof(HOME_ADMIN_BUTTONS) / sizeof(HOME_ADMIN_BUTTONS[0]));
@@ -50,7 +56,7 @@ void draw_home(const AppContext *ctx, const GuiState *state)
     settextcolor(RGB(40, 50, 70));
     outtextxy(CONTENT_LEFT + 30, CONTENT_TOP + 30, L"控制台功能已移至图形界面演示");
     settextstyle(20, 0, L"Segoe UI");
-    outtextxy(CONTENT_LEFT + 30, CONTENT_TOP + 90, L"1. 用户：注册、登录、登出（左侧按钮）");
+    outtextxy(CONTENT_LEFT + 30, CONTENT_TOP + 90, L"1. 用户：实名注册、登录、找回密码、登出");
     outtextxy(CONTENT_LEFT + 30, CONTENT_TOP + 130, L"2. 车辆：添加、查看、查找、编辑、删除");
     outtextxy(CONTENT_LEFT + 30, CONTENT_TOP + 170, L"3. 保险：保单、理赔、结案管理");
     outtextxy(CONTENT_LEFT + 30, CONTENT_TOP + 210,
@@ -62,6 +68,7 @@ static void handle_register(AppContext *ctx, GuiState *state)
 {
     /* {0} 把数组全部初始化为 0，因此即使提前返回也始终是合法空字符串。 */
     char username[20] = {0}, password[20] = {0};
+    char real_name[REAL_NAME_CAPACITY] = {0}, id_card[ID_CARD_CAPACITY] = {0};
     if (!prompt_char_field(L"注册", L"请输入用户名：", username, sizeof(username), ""))
         return;
     if (!validate_string_len(username, (int)sizeof(((User *)0)->username)))
@@ -76,7 +83,23 @@ static void handle_register(AppContext *ctx, GuiState *state)
         set_message(state, L"密码长度不合法（1-19 字符）");
         return;
     }
-    if (register_user_account(ctx, username, password))
+    if (!prompt_char_field(L"实名认证", L"请输入真实姓名（不能包含空格）：", real_name,
+                           sizeof(real_name), ""))
+        return;
+    if (!validate_real_name(real_name))
+    {
+        set_message(state, L"真实姓名格式不合法");
+        return;
+    }
+    if (!prompt_char_field(L"实名认证", L"请输入18位身份证号：", id_card,
+                           sizeof(id_card), ""))
+        return;
+    if (!validate_chinese_id_card(id_card))
+    {
+        set_message(state, L"身份证号格式或校验码不正确");
+        return;
+    }
+    if (register_user_account(ctx, username, password, real_name, id_card))
     {
         save_users(ctx);
         set_message(state, L"注册成功");
@@ -91,6 +114,63 @@ static void handle_register(AppContext *ctx, GuiState *state)
         else
             set_message(state, L"注册失败");
     }
+}
+
+static void handle_forgot_password(AppContext *ctx, GuiState *state)
+{
+    char username[USERNAME_CAPACITY] = {0};
+    char real_name[REAL_NAME_CAPACITY] = {0};
+    char id_card[ID_CARD_CAPACITY] = {0};
+    char new_password[PASSWORD_INPUT_CAPACITY] = {0};
+    char confirm_password[PASSWORD_INPUT_CAPACITY] = {0};
+
+    if (!prompt_char_field(L"找回密码", L"请输入用户名：", username, sizeof(username), ""))
+        return;
+    if (!validate_string_len(username, USERNAME_CAPACITY) || strcmp(username, "admin") == 0 ||
+        !user_exists(ctx, username))
+    {
+        set_message(state, L"无法验证该账户的实名信息");
+        return;
+    }
+    if (!prompt_char_field(L"身份验证", L"请输入注册时的真实姓名：", real_name,
+                           sizeof(real_name), ""))
+        return;
+    if (!prompt_char_field(L"身份验证", L"请输入注册时的身份证号：", id_card,
+                           sizeof(id_card), ""))
+        return;
+    if (!validate_real_name(real_name) || !validate_chinese_id_card(id_card))
+    {
+        set_message(state, L"实名信息验证失败");
+        return;
+    }
+    if (!prompt_char_field(L"重置密码", L"请输入新密码（1-19字符）：", new_password,
+                           sizeof(new_password), ""))
+        return;
+    if (!validate_string_len(new_password, PASSWORD_INPUT_CAPACITY))
+    {
+        set_message(state, L"新密码长度不合法（1-19字符）");
+        return;
+    }
+    if (!prompt_char_field(L"重置密码", L"请再次输入新密码：", confirm_password,
+                           sizeof(confirm_password), ""))
+        return;
+    if (strcmp(new_password, confirm_password) != 0)
+    {
+        set_message(state, L"两次输入的新密码不一致");
+        return;
+    }
+    if (!reset_user_password(ctx, username, real_name, id_card, new_password))
+    {
+        set_message(state, L"实名信息验证失败");
+        return;
+    }
+    if (!save_users(ctx))
+    {
+        set_message(state, L"密码已修改，但保存失败，请勿关闭程序并联系管理员");
+        return;
+    }
+    append_operation_log(ctx, "RESET_PASSWORD", username, "password reset after identity check");
+    set_message(state, L"密码已重置，请使用新密码登录");
 }
 
 /* 收集用户名和密码并更新 current_user；密码不会显示在状态消息中。 */
@@ -144,6 +224,9 @@ void handle_home_action(AppContext *ctx, GuiState *state, int action, int *runni
         break;
     case HOME_LOGIN:
         handle_login(ctx, state);
+        break;
+    case HOME_FORGOT_PASSWORD:
+        handle_forgot_password(ctx, state);
         break;
     case HOME_LOGOUT:
         handle_logout(ctx, state);

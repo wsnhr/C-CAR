@@ -51,6 +51,7 @@ typedef enum
 {
     HOME_REGISTER = 1,
     HOME_LOGIN,
+    HOME_FORGOT_PASSWORD,
     HOME_LOGOUT,
     HOME_CARS,
     HOME_INSURANCE,

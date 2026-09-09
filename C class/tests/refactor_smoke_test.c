@@ -27,20 +27,28 @@ int main(void)
 
     init_app(&ctx);
     assert(ctx.user_count == 0 && ctx.car_count == 0);
-    assert(register_user_account(&ctx, "alice", "alice-pass"));
-    assert(register_user_account(&ctx, "bob", "bob-pass"));
-    assert(!register_user_account(&ctx, "alice", "duplicate"));
+    assert(validate_chinese_id_card("11010519491231002X"));
+    assert(validate_chinese_id_card("11010519491231002x"));
+    assert(!validate_chinese_id_card("110105194912310021"));
+    assert(!validate_chinese_id_card("11010519491331002X"));
+    assert(register_user_account(&ctx, "alice", "alice-pass", "Alice", "11010519491231002X"));
+    assert(register_user_account(&ctx, "bob", "bob-pass", "Bob", "11010519491231002X"));
+    assert(!register_user_account(&ctx, "alice", "duplicate", "Alice", "11010519491231002X"));
     /* 内存中保存的是 32 位盐和 64 位哈希，不能与明文相同。 */
     assert(strlen(ctx.users[0].salt) == 32);
     assert(strlen(ctx.users[0].password) == 64);
     assert(strcmp(ctx.users[0].password, "alice-pass") != 0);
     assert(!login_user_account(&ctx, "alice", "wrong-pass"));
+    assert(!reset_user_password(&ctx, "alice", "Wrong", "11010519491231002X", "new-pass"));
+    assert(reset_user_password(&ctx, "alice", "Alice", "11010519491231002x", "new-pass"));
+    assert(!login_user_account(&ctx, "alice", "alice-pass"));
+    assert(login_user_account(&ctx, "alice", "new-pass"));
     /* 固定向量验证算法确实是 SHA256(salt || password)，与上游文件格式兼容。 */
     assert(
         password_hash_matches("test-pass", "000102030405060708090a0b0c0d0e0f",
                               "eb177309970710aff1b7263d3f1bdddb763f1463e7fabdb8d032eda5978d670b"));
 
-    assert(login_user_account(&ctx, "alice", "alice-pass"));
+    assert(login_user_account(&ctx, "alice", "new-pass"));
     /* 普通用户即使请求 bob，也只能把车辆登记到自己名下。 */
     assert(add_car_for_current_user(&ctx, "A-100", "Brand", "Model", "bob", VIOLATION_NONE,
                                     purchase_date, 100000.0));
@@ -69,7 +77,9 @@ int main(void)
     assert(loaded.user_count == 2 && loaded.car_count == 1 && loaded.policy_count == 1 &&
            loaded.claim_count == 1);
     assert(loaded.claims[0].status == CLAIM_SETTLED);
-    assert(login_user_account(&loaded, "alice", "alice-pass"));
+    assert(strlen(loaded.users[0].identity_salt) == 32);
+    assert(strlen(loaded.users[0].identity_hash) == 64);
+    assert(login_user_account(&loaded, "alice", "new-pass"));
 
     /* 删除车辆必须同时删除引用它的保单和理赔。 */
     assert(remove_car_for_current_user(&ctx, "A-100"));
