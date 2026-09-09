@@ -19,6 +19,8 @@
 #define PASSWORD_INPUT_CAPACITY 20
 #define PASSWORD_SALT_HEX_CAPACITY 33
 #define PASSWORD_HASH_HEX_CAPACITY 65
+#define REAL_NAME_CAPACITY 64
+#define ID_CARD_CAPACITY 19
 
 /* typedef 为匿名结构体取名 User，以后可直接写 User user;。 */
 typedef struct
@@ -26,6 +28,8 @@ typedef struct
     char username[USERNAME_CAPACITY];          /* 用户名，最多 19 个有效字符。 */
     char salt[PASSWORD_SALT_HEX_CAPACITY];     /* 16 字节随机盐的 32 位十六进制文本。 */
     char password[PASSWORD_HASH_HEX_CAPACITY]; /* SHA-256 结果的 64 位十六进制文本，不是明文。 */
+    char identity_salt[PASSWORD_SALT_HEX_CAPACITY]; /* 姓名和身份证组合凭据的随机盐。 */
+    char identity_hash[PASSWORD_HASH_HEX_CAPACITY]; /* 实名信息哈希，不保存姓名和身份证明文。 */
 } User;
 
 /* 枚举让整数等级拥有可读名称，未指定值的成员从前一项依次加 1。 */

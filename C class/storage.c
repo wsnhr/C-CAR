@@ -18,8 +18,8 @@
 
 /* ================= 用户数据持久化 ================= */
 /*
- * 全量重写 users.txt，每行依次是用户名、盐的十六进制文本和密码哈希。
- * 文件中不保存明文密码。全量重写也能确保已删除账号不会重新出现。
+ * 全量重写 users.txt，每行是用户名、密码盐/哈希、实名盐/哈希。
+ * 文件中不保存明文密码、姓名或身份证号。
  */
 int save_users(const AppContext *ctx)
 {
@@ -38,19 +38,20 @@ int save_users(const AppContext *ctx)
     }
 
     for (i = 0; i < ctx->user_count; ++i)
-        fprintf(fp, "%s %s %s\n", ctx->users[i].username, ctx->users[i].salt,
-                ctx->users[i].password);
+        fprintf(fp, "%s %s %s %s %s\n", ctx->users[i].username, ctx->users[i].salt,
+                ctx->users[i].password, ctx->users[i].identity_salt,
+                ctx->users[i].identity_hash);
 
     fclose(fp);
     return 1;
 }
 /*
- * 用 "r" 只读方式加载用户。三个 %s 的宽度分别与 username、salt、
- * password 数组容量匹配；fscanf 成功读取三个字段时返回 3。
+ * 按行加载用户；实名版本固定使用五个字段，格式不完整的记录会被忽略。
  */
 int load_users(AppContext *ctx)
 {
     FILE *fp;
+    char line[256];
 
     if (!ctx)
         return 0;
@@ -65,11 +66,17 @@ int load_users(AppContext *ctx)
 
     ctx->user_count = 0;
 
-    while (ctx->user_count < MAX_USERS &&
-           fscanf(fp, "%19s %32s %64s", ctx->users[ctx->user_count].username,
-                  ctx->users[ctx->user_count].salt, ctx->users[ctx->user_count].password) == 3)
+    while (ctx->user_count < MAX_USERS && fgets(line, sizeof(line), fp))
     {
-        ctx->user_count++;
+        User *user = &ctx->users[ctx->user_count];
+        int field_count;
+        memset(user, 0, sizeof(*user));
+        field_count = sscanf(line, "%19s %32s %64s %32s %64s", user->username, user->salt,
+                             user->password, user->identity_salt, user->identity_hash);
+        if (field_count == 5)
+            ctx->user_count++;
+        else
+            memset(user, 0, sizeof(*user));
     }
 
     fclose(fp);
