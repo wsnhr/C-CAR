@@ -1,125 +1,333 @@
-#define _CRT_SECURE_NO_WARNINGS
+ï»¿#define _CRT_SECURE_NO_WARNINGS
 #include "gui_internal.h"
 
-static void format_car_line(const Car* car, wchar_t* line, size_t count)
+/*
+ * gui_car.c â€”â€” è½¦è¾†é¡µé¢
+ *
+ * æœ¬æ–‡ä»¶æŠŠ GUI è¾“å…¥è½¬æ¢æˆä¸šåŠ¡å‡½æ•°å‚æ•°ã€‚æ“ä½œæˆåŠŸåä¿å­˜ cars.txt å¹¶è®°å½•
+ * æ—¥å¿—ï¼›åˆ é™¤è½¦è¾†è¿˜è¦ä¿å­˜è¢«çº§è”ä¿®æ”¹çš„ä¿å•å’Œç†èµ”æ–‡ä»¶ã€‚
+ */
+
+static const Button CAR_ADMIN_BUTTONS[] = {{{20, 120, 200, 160}, L"æ·»åŠ è½¦è¾†", CAR_ADD},
+                                           {{20, 172, 200, 212}, L"æŸ¥çœ‹å…¨éƒ¨", CAR_LIST_ALL},
+                                           {{20, 224, 200, 264}, L"æŸ¥çœ‹æˆ‘çš„", CAR_LIST_MINE},
+                                           {{20, 276, 200, 316}, L"æŸ¥æ‰¾è½¦è¾†", CAR_FIND},
+                                           {{20, 328, 200, 368}, L"ç¼–è¾‘è½¦è¾†", CAR_MODIFY},
+                                           {{20, 380, 200, 420}, L"åˆ é™¤è½¦è¾†", CAR_DELETE},
+                                           {{20, 432, 95, 472}, L"ä¸Šä¸€é¡µ", CAR_PREV},
+                                           {{125, 432, 200, 472}, L"ä¸‹ä¸€é¡µ", CAR_NEXT},
+                                           {{20, 492, 200, 532}, L"è¿”å›", CAR_BACK}};
+
+static const Button CAR_USER_BUTTONS[] = {{{20, 120, 200, 160}, L"æ·»åŠ è½¦è¾†", CAR_ADD},
+                                          {{20, 224, 200, 264}, L"æŸ¥çœ‹æˆ‘çš„", CAR_LIST_MINE},
+                                          {{20, 276, 200, 316}, L"æŸ¥æ‰¾è½¦è¾†", CAR_FIND},
+                                          {{20, 328, 200, 368}, L"ç¼–è¾‘è½¦è¾†", CAR_MODIFY},
+                                          {{20, 380, 200, 420}, L"åˆ é™¤è½¦è¾†", CAR_DELETE},
+                                          {{20, 432, 95, 472}, L"ä¸Šä¸€é¡µ", CAR_PREV},
+                                          {{125, 432, 200, 472}, L"ä¸‹ä¸€é¡µ", CAR_NEXT},
+                                          {{20, 492, 200, 532}, L"è¿”å›", CAR_BACK}};
+
+static const Button *car_buttons(const AppContext *ctx, int *count)
+{
+    if (app_is_admin(ctx))
+    {
+        *count = (int)(sizeof(CAR_ADMIN_BUTTONS) / sizeof(CAR_ADMIN_BUTTONS[0]));
+        return CAR_ADMIN_BUTTONS;
+    }
+    *count = (int)(sizeof(CAR_USER_BUTTONS) / sizeof(CAR_USER_BUTTONS[0]));
+    return CAR_USER_BUTTONS;
+}
+
+/* æŠŠä¸€ä¸ª Car æ ¼å¼åŒ–ä¸ºè¡¨æ ¼ä¸­çš„å®½å­—ç¬¦ä¸²ï¼›count æ˜¯ç›®æ ‡ç¼“å†²åŒºå®¹é‡ã€‚ */
+static void format_car_line(const Car *car, wchar_t *line, size_t count)
 {
     wchar_t plate[32], brand[64], model[64], owner[64];
     char_to_wchar(car->plate, plate, 32);
     char_to_wchar(car->brand, brand, 64);
     char_to_wchar(car->model, model, 64);
     char_to_wchar(car->owner, owner, 64);
-    _snwprintf_s(line, count, _TRUNCATE, L"%-8s %-10s %-10s %-10s %-8s %04d-%02d-%02d %.2f", plate, brand, model, owner, violation_to_text(car->violation), car->purchase_date.year, car->purchase_date.month, car->purchase_date.day, car->purchase_price);
+    _snwprintf_s(line, count, _TRUNCATE, L"%-8s %-10s %-10s %-10s %-8s %04d-%02d-%02d %.2f", plate,
+                 brand, model, owner, violation_to_text(car->violation), car->purchase_date.year,
+                 car->purchase_date.month, car->purchase_date.day, car->purchase_price);
 }
 
-static int collect_visible_cars(const AppContext* ctx, int only_mine, int* indices, int max_count)
-{
-    return collect_visible_car_indices(ctx, only_mine, indices, max_count);
-}
-
-void draw_cars(const AppContext* ctx, const GuiState* state, const Button* buttons, int count)
+/* é¡µé¢å±‚çš„è–„åŒ…è£…ï¼Œå®é™…æƒé™è¿‡æ»¤ç”± car.c è´Ÿè´£ã€‚ */
+/*
+ * ç»˜åˆ¶è½¦è¾†é¡µå¹¶å®Œæˆåˆ†é¡µã€‚total_pages ä½¿ç”¨â€œå‘ä¸Šå–æ•´é™¤æ³•â€ï¼š
+ * (total + PAGE_SIZE - 1) / PAGE_SIZEï¼Œä¿è¯ä¸è¶³ä¸€é¡µçš„æ•°æ®ä¹Ÿå ä¸€é¡µã€‚
+ */
+void draw_cars(const AppContext *ctx, const GuiState *state)
 {
     int i;
-    draw_title(L"³µÁ¾¹ÜÀí");
+    int button_count;
+    const Button *buttons = car_buttons(ctx, &button_count);
+    draw_title(L"è½¦è¾†ç®¡ç†");
     draw_status(ctx);
     draw_message_box(state);
-    for (i = 0; i < count; ++i) draw_button(&buttons[i]);
+    for (i = 0; i < button_count; ++i)
+        draw_button(&buttons[i]);
     draw_content_panel();
-    /* CHANGED: ½«±íÍ·¡°Î¥ÕÂ¡±¸ÄÎª¡°Î¥ÕÂ¼ÇÂ¼¡± */
-    draw_table_header(L"³µÅÆ    Æ·ÅÆ        ĞÍºÅ        ³µÖ÷        Î¥ÕÂ¼ÇÂ¼     ¹ºÈëÈÕÆÚ     ¼Û¸ñ");
-    int indices[MAX_CARS] = { 0 };
-    int total = collect_visible_cars(ctx, state->car_show_mine, indices, MAX_CARS);
-    int page = state->car_page;
-    int total_pages = total == 0 ? 1 : (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    if (page >= total_pages) page = total_pages - 1;
-    if (page < 0) page = 0;
-    const wchar_t* lines[PAGE_SIZE] = { 0 };
-    wchar_t buffer[PAGE_SIZE][256] = { 0 };
+    /* è¡¨å¤´é¡ºåºå¿…é¡»ä¸ format_car_line è¾“å‡ºå­—æ®µä¸€è‡´ã€‚ */
+    draw_table_header(
+        L"è½¦ç‰Œ    å“ç‰Œ        å‹å·        è½¦ä¸»        è¿ç« è®°å½•     è´­å…¥æ—¥æœŸ     ä»·æ ¼");
+    int indices[MAX_CARS] = {0};
+    int total = collect_visible_car_indices(ctx, state->car_show_mine, indices, MAX_CARS);
+    PageRange page = make_page_range(state->car_page, total);
+    /* lines ä¿å­˜æ¯è¡Œæ–‡å­—çš„åœ°å€ï¼Œbuffer æ‰æ˜¯çœŸæ­£å­˜æ”¾æ–‡å­—çš„äºŒç»´æ•°ç»„ã€‚ */
+    const wchar_t *lines[PAGE_SIZE] = {0};
+    wchar_t buffer[PAGE_SIZE][256] = {0};
     int line_count = 0;
-    int start = page * PAGE_SIZE;
-    int end = start + PAGE_SIZE;
-    if (end > total) end = total;
-    for (i = start; i < end; ++i) {
+    for (i = page.start; i < page.end; ++i)
+    {
         format_car_line(&ctx->cars[indices[i]], buffer[line_count], 256);
         lines[line_count] = buffer[line_count];
         ++line_count;
     }
-    if (line_count == 0) {
-        wcsncpy_s(buffer[0], 256, L"ÎŞ³µÁ¾¼ÇÂ¼", _TRUNCATE);
+    if (line_count == 0)
+    {
+        wcsncpy_s(buffer[0], 256, L"æ— è½¦è¾†è®°å½•", _TRUNCATE);
         lines[0] = buffer[0];
         line_count = 1;
     }
     draw_rows(lines, line_count);
-    draw_footer_page(page, total);
+    draw_footer_page(page.page, total);
 }
 
-static void handle_add_car(AppContext* ctx, GuiState* state)
+/* æŒ‰é¡ºåºæ”¶é›†å’ŒéªŒè¯å­—æ®µï¼Œå†è°ƒç”¨å¸¦æƒé™æ£€æŸ¥çš„è½¦è¾†æ–°å¢æ¥å£ã€‚ */
+static void handle_add_car(AppContext *ctx, GuiState *state)
 {
     char plate[10] = {0}, brand[20] = {0}, model[20] = {0}, owner[20] = {0};
-    ViolationLevel violation = VIOLATION_NONE; Date date = {0}; date.year = today_local().year; date.month = 1; date.day = 1; double price = 0.0;
-    if (!prompt_char_field(L"Ìí¼Ó³µÁ¾", L"ÇëÊäÈë³µÅÆ£º", plate, sizeof(plate), "")) return;
-    if (!validate_plate(plate)) { set_message(state, L"³µÅÆ¸ñÊ½²»ºÏ·¨£ºÖ»ÔÊĞí×ÖÄ¸Êı×ÖºÍ¶Ìºá£¬³¤¶ÈÏŞÖÆÇë±£Ö¤²»³¬¹ı9×Ö·û"); return; }
-    if (!prompt_char_field(L"Ìí¼Ó³µÁ¾", L"ÇëÊäÈëÆ·ÅÆ£º", brand, sizeof(brand), "")) return;
-    if (!validate_string_len(brand, (int)sizeof(((Car*)0)->brand))) { set_message(state, L"Æ·ÅÆ³¤¶È²»ºÏ·¨"); return; }
-    if (!prompt_char_field(L"Ìí¼Ó³µÁ¾", L"ÇëÊäÈëĞÍºÅ£º", model, sizeof(model), "")) return;
-    if (!validate_string_len(model, (int)sizeof(((Car*)0)->model))) { set_message(state, L"ĞÍºÅ³¤¶È²»ºÏ·¨"); return; }
-    if (!prompt_violation_field(L"Ìí¼Ó³µÁ¾", &violation, VIOLATION_NONE)) return;
-    if (!prompt_date_field(L"Ìí¼Ó³µÁ¾", &date, NULL)) return;
-    if (!validate_date(&date)) { set_message(state, L"¹ºÂòÈÕÆÚ²»ºÏ·¨"); return; }
-    if (!prompt_double_field(L"Ìí¼Ó³µÁ¾", L"ÇëÊäÈë¹ºÈë¼Û¸ñ£¨Ôª£©£º", &price, 0.0)) return;
-    if (!validate_price_value(price)) { set_message(state, L"¼Û¸ñ²»ºÏ·¨£¨±ØĞëÔÚ 0 - 1e9 ·¶Î§ÄÚ£©"); return; }
-    if (is_admin(ctx)) { if (!prompt_char_field(L"Ìí¼Ó³µÁ¾", L"ÇëÊäÈë³µÖ÷ÓÃ»§Ãû£º", owner, sizeof(owner), "")) return; if (!validate_string_len(owner, (int)sizeof(((User*)0)->username)) || !user_exists(ctx, owner)) { set_message(state, L"Ö¸¶¨µÄ³µÖ÷²»´æÔÚ»òÓÃ»§Ãû³¤¶È²»ºÏ·¨"); return; } }
-    else { strncpy(owner, ctx->current_user, sizeof(owner)-1); owner[sizeof(owner)-1] = '\0'; }
-    if (add_car_for_current_user(ctx, plate, brand, model, owner, violation, date, price)) { save_cars(ctx); append_operation_log(ctx, "ADD_CAR", plate, owner); set_message(state, L"Ìí¼Ó³µÁ¾³É¹¦"); state->car_show_mine = 0; }
-    else set_message(state, L"Ìí¼Ó³µÁ¾Ê§°Ü£¨¿ÉÄÜ³µÅÆÒÑ´æÔÚ»òÒÑ´ïÉÏÏŞ£©");
+    ViolationLevel violation = VIOLATION_NONE;
+    Date date = {0};
+    date.year = date_today().year;
+    date.month = 1;
+    date.day = 1;
+    double price = 0.0;
+    if (!prompt_char_field(L"æ·»åŠ è½¦è¾†", L"è¯·è¾“å…¥è½¦ç‰Œï¼š", plate, sizeof(plate), ""))
+        return;
+    if (!validate_plate(plate))
+    {
+        set_message(state, L"è½¦ç‰Œæ ¼å¼ä¸åˆæ³•ï¼šåªå…è®¸å­—æ¯æ•°å­—å’ŒçŸ­æ¨ªï¼Œé•¿åº¦é™åˆ¶è¯·ä¿è¯ä¸è¶…è¿‡9å­—ç¬¦");
+        return;
+    }
+    if (!prompt_char_field(L"æ·»åŠ è½¦è¾†", L"è¯·è¾“å…¥å“ç‰Œï¼š", brand, sizeof(brand), ""))
+        return;
+    if (!validate_string_len(brand, (int)sizeof(((Car *)0)->brand)))
+    {
+        set_message(state, L"å“ç‰Œé•¿åº¦ä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_char_field(L"æ·»åŠ è½¦è¾†", L"è¯·è¾“å…¥å‹å·ï¼š", model, sizeof(model), ""))
+        return;
+    if (!validate_string_len(model, (int)sizeof(((Car *)0)->model)))
+    {
+        set_message(state, L"å‹å·é•¿åº¦ä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_violation_field(L"æ·»åŠ è½¦è¾†", &violation, VIOLATION_NONE))
+        return;
+    if (!prompt_date_field(L"æ·»åŠ è½¦è¾†", &date, NULL))
+        return;
+    if (!date_is_valid(&date))
+    {
+        set_message(state, L"è´­ä¹°æ—¥æœŸä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_double_field(L"æ·»åŠ è½¦è¾†", L"è¯·è¾“å…¥è´­å…¥ä»·æ ¼ï¼ˆå…ƒï¼‰ï¼š", &price, 0.0))
+        return;
+    if (!validate_price_value(price))
+    {
+        set_message(state, L"ä»·æ ¼ä¸åˆæ³•ï¼ˆå¿…é¡»åœ¨ 0 - 1e9 èŒƒå›´å†…ï¼‰");
+        return;
+    }
+    if (app_is_admin(ctx))
+    {
+        if (!prompt_char_field(L"æ·»åŠ è½¦è¾†", L"è¯·è¾“å…¥è½¦ä¸»ç”¨æˆ·åï¼š", owner, sizeof(owner), ""))
+            return;
+        if (!validate_string_len(owner, (int)sizeof(((User *)0)->username)) ||
+            !user_exists(ctx, owner))
+        {
+            set_message(state, L"æŒ‡å®šçš„è½¦ä¸»ä¸å­˜åœ¨æˆ–ç”¨æˆ·åé•¿åº¦ä¸åˆæ³•");
+            return;
+        }
+    }
+    else
+    {
+        copy_text(owner, sizeof(owner), ctx->current_user);
+    }
+    if (add_car_for_current_user(ctx, plate, brand, model, owner, violation, date, price))
+    {
+        save_cars(ctx);
+        append_operation_log(ctx, "ADD_CAR", plate, owner);
+        set_message(state, L"æ·»åŠ è½¦è¾†æˆåŠŸ");
+        state->car_show_mine = 0;
+    }
+    else
+        set_message(state, L"æ·»åŠ è½¦è¾†å¤±è´¥ï¼ˆå¯èƒ½è½¦ç‰Œå·²å­˜åœ¨æˆ–å·²è¾¾ä¸Šé™ï¼‰");
 }
 
-static void handle_find_car(AppContext* ctx, GuiState* state)
+/* ä½¿ç”¨æƒé™æ„ŸçŸ¥çš„ find_visible_carï¼Œæ™®é€šç”¨æˆ·æ— æ³•æŸ¥è¯¢ä»–äººè½¦è¾†ã€‚ */
+static void handle_find_car(AppContext *ctx, GuiState *state)
 {
-    char plate[10] = {0}; if (!prompt_char_field(L"²éÕÒ³µÁ¾", L"ÇëÊäÈë³µÅÆ£º", plate, sizeof(plate), "")) return; const Car* car = find_visible_car(ctx, plate); if (!car) { set_message(state, L"Î´ÕÒµ½¸Ã³µÁ¾"); return; }
-    wchar_t plate_t[32], brand_t[64], model_t[64], owner_t[64], message[512]; char_to_wchar(car->plate, plate_t, 32); char_to_wchar(car->brand, brand_t, 64); char_to_wchar(car->model, model_t, 64); char_to_wchar(car->owner, owner_t, 64); _snwprintf_s(message, 512, _TRUNCATE, L"³µÅÆ:%s Æ·ÅÆ:%s ĞÍºÅ:%s ³µÖ÷:%s Î¥ÕÂ:%s ¹ºÈë:%04d-%02d-%02d ¼Û¸ñ:%.2fÔª", plate_t, brand_t, model_t, owner_t, violation_to_text(car->violation), car->purchase_date.year, car->purchase_date.month, car->purchase_date.day, car->purchase_price); set_message(state, message);
+    char plate[10] = {0};
+    if (!prompt_char_field(L"æŸ¥æ‰¾è½¦è¾†", L"è¯·è¾“å…¥è½¦ç‰Œï¼š", plate, sizeof(plate), ""))
+        return;
+    const Car *car = find_visible_car(ctx, plate);
+    if (!car)
+    {
+        set_message(state, L"æœªæ‰¾åˆ°è¯¥è½¦è¾†");
+        return;
+    }
+    wchar_t plate_t[32], brand_t[64], model_t[64], owner_t[64], message[512];
+    char_to_wchar(car->plate, plate_t, 32);
+    char_to_wchar(car->brand, brand_t, 64);
+    char_to_wchar(car->model, model_t, 64);
+    char_to_wchar(car->owner, owner_t, 64);
+    _snwprintf_s(message, 512, _TRUNCATE,
+                 L"è½¦ç‰Œ:%s å“ç‰Œ:%s å‹å·:%s è½¦ä¸»:%s è¿ç« :%s è´­å…¥:%04d-%02d-%02d ä»·æ ¼:%.2få…ƒ",
+                 plate_t, brand_t, model_t, owner_t, violation_to_text(car->violation),
+                 car->purchase_date.year, car->purchase_date.month, car->purchase_date.day,
+                 car->purchase_price);
+    set_message(state, message);
 }
 
-static void handle_modify_car(AppContext* ctx, GuiState* state)
+/* å…ˆç”¨åŸå€¼ä½œä¸ºè¾“å…¥æ¡†é»˜è®¤å€¼ï¼Œç¡®è®¤åç»Ÿä¸€æäº¤ä¿®æ”¹å¹¶ä¿å­˜ã€‚ */
+static void handle_modify_car(AppContext *ctx, GuiState *state)
 {
-    char plate[10] = {0}; if (!prompt_char_field(L"±à¼­³µÁ¾", L"ÇëÊäÈëÒª±à¼­µÄ³µÅÆ£º", plate, sizeof(plate), "")) return; if (!validate_plate(plate)) { set_message(state, L"³µÅÆ¸ñÊ½²»ºÏ·¨"); return; }
-    Car* car = find_car(ctx, plate); if (!car) { set_message(state, L"Î´ÕÒµ½¸Ã³µÁ¾"); return; }
-    char brand[20] = {0}, model[20] = {0}; ViolationLevel violation = car->violation; Date date = car->purchase_date; double price = car->purchase_price;
-    if (!prompt_char_field(L"±à¼­³µÁ¾", L"ÇëÊäÈëĞÂÆ·ÅÆ£¨Áô¿ÕÔò±£³Ö²»±ä£©£º", brand, sizeof(brand), car->brand)) return; if (!validate_string_len(brand, (int)sizeof(((Car*)0)->brand))) { set_message(state, L"Æ·ÅÆ³¤¶È²»ºÏ·¨"); return; }
-    if (!prompt_char_field(L"±à¼­³µÁ¾", L"ÇëÊäÈëĞÂĞÍºÅ£¨Áô¿ÕÔò±£³Ö²»±ä£©£º", model, sizeof(model), car->model)) return; if (!validate_string_len(model, (int)sizeof(((Car*)0)->model))) { set_message(state, L"ĞÍºÅ³¤¶È²»ºÏ·¨"); return; }
-    if (!prompt_violation_field(L"±à¼­³µÁ¾", &violation, car->violation)) return;
-    if (!prompt_date_field(L"±à¼­³µÁ¾", &date, &car->purchase_date)) return; if (!validate_date(&date)) { set_message(state, L"¹ºÂòÈÕÆÚ²»ºÏ·¨"); return; }
-    if (!prompt_double_field(L"±à¼­³µÁ¾", L"ÇëÊäÈëĞÂ¹ºÈë¼Û¸ñ£º", &price, car->purchase_price)) return; if (!validate_price_value(price)) { set_message(state, L"¼Û¸ñ²»ºÏ·¨£¨±ØĞëÔÚ 0 - 1e9 ·¶Î§ÄÚ£©"); return; }
-    if (modify_car_for_current_user(ctx, plate, brand, model, violation, date, price)) { save_cars(ctx); append_operation_log(ctx, "MODIFY_CAR", plate, "modified"); set_message(state, L"±à¼­³µÁ¾³É¹¦"); }
-    else set_message(state, L"±à¼­³µÁ¾Ê§°Ü");
+    char plate[10] = {0};
+    if (!prompt_char_field(L"ç¼–è¾‘è½¦è¾†", L"è¯·è¾“å…¥è¦ç¼–è¾‘çš„è½¦ç‰Œï¼š", plate, sizeof(plate), ""))
+        return;
+    if (!validate_plate(plate))
+    {
+        set_message(state, L"è½¦ç‰Œæ ¼å¼ä¸åˆæ³•");
+        return;
+    }
+    const Car *car = find_visible_car(ctx, plate);
+    if (!car)
+    {
+        set_message(state, L"æœªæ‰¾åˆ°è¯¥è½¦è¾†");
+        return;
+    }
+    char brand[20] = {0}, model[20] = {0};
+    ViolationLevel violation = car->violation;
+    Date date = car->purchase_date;
+    double price = car->purchase_price;
+    if (!prompt_char_field(L"ç¼–è¾‘è½¦è¾†", L"è¯·è¾“å…¥æ–°å“ç‰Œï¼ˆç•™ç©ºåˆ™ä¿æŒä¸å˜ï¼‰ï¼š", brand, sizeof(brand),
+                           car->brand))
+        return;
+    if (!validate_string_len(brand, (int)sizeof(((Car *)0)->brand)))
+    {
+        set_message(state, L"å“ç‰Œé•¿åº¦ä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_char_field(L"ç¼–è¾‘è½¦è¾†", L"è¯·è¾“å…¥æ–°å‹å·ï¼ˆç•™ç©ºåˆ™ä¿æŒä¸å˜ï¼‰ï¼š", model, sizeof(model),
+                           car->model))
+        return;
+    if (!validate_string_len(model, (int)sizeof(((Car *)0)->model)))
+    {
+        set_message(state, L"å‹å·é•¿åº¦ä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_violation_field(L"ç¼–è¾‘è½¦è¾†", &violation, car->violation))
+        return;
+    if (!prompt_date_field(L"ç¼–è¾‘è½¦è¾†", &date, &car->purchase_date))
+        return;
+    if (!date_is_valid(&date))
+    {
+        set_message(state, L"è´­ä¹°æ—¥æœŸä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_double_field(L"ç¼–è¾‘è½¦è¾†", L"è¯·è¾“å…¥æ–°è´­å…¥ä»·æ ¼ï¼š", &price, car->purchase_price))
+        return;
+    if (!validate_price_value(price))
+    {
+        set_message(state, L"ä»·æ ¼ä¸åˆæ³•ï¼ˆå¿…é¡»åœ¨ 0 - 1e9 èŒƒå›´å†…ï¼‰");
+        return;
+    }
+    if (modify_car_for_current_user(ctx, plate, brand, model, violation, date, price))
+    {
+        save_cars(ctx);
+        append_operation_log(ctx, "MODIFY_CAR", plate, "modified");
+        set_message(state, L"ç¼–è¾‘è½¦è¾†æˆåŠŸ");
+    }
+    else
+        set_message(state, L"ç¼–è¾‘è½¦è¾†å¤±è´¥");
 }
 
-static void handle_delete_car(AppContext* ctx, GuiState* state)
+/* å…ˆåˆ é™¤å…³è”ä¿å•/ç†èµ”ï¼Œå†åˆ é™¤è½¦è¾†ï¼Œæœ€åå…¨é‡ä¿å­˜ä¸‰ä¸ªå—å½±å“çš„æ•°æ®æ–‡ä»¶ã€‚ */
+static void handle_delete_car(AppContext *ctx, GuiState *state)
 {
-    char plate[10] = {0}; if (!prompt_char_field(L"É¾³ı³µÁ¾", L"ÇëÊäÈëÒªÉ¾³ıµÄ³µÅÆ£º", plate, sizeof(plate), "")) return; if (!validate_plate(plate)) { set_message(state, L"³µÅÆ¸ñÊ½²»ºÏ·¨"); return; }
-    Car* car = find_car(ctx, plate); if (!car) { set_message(state, L"Î´ÕÒµ½¸Ã³µÁ¾"); return; } if (!is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0) { set_message(state, L"Ö»ÄÜÉ¾³ıµ±Ç°ÓÃ»§ÓµÓĞµÄ³µÁ¾"); return; }
-    // ÏÈ¼¶ÁªÉ¾³ıÏà¹Ø±£µ¥/ÀíÅâ
-    cascade_remove_policies_and_claims_for_plate(ctx, plate);
-    if (remove_car(ctx, plate) == 0) { save_cars(ctx); save_policies(ctx); save_claims(ctx); append_operation_log(ctx, "DELETE_CAR", plate, "deleted with cascade"); set_message(state, L"É¾³ı³µÁ¾³É¹¦"); }
-    else set_message(state, L"É¾³ı³µÁ¾Ê§°Ü");
+    char plate[10] = {0};
+    if (!prompt_char_field(L"åˆ é™¤è½¦è¾†", L"è¯·è¾“å…¥è¦åˆ é™¤çš„è½¦ç‰Œï¼š", plate, sizeof(plate), ""))
+        return;
+    if (!validate_plate(plate))
+    {
+        set_message(state, L"è½¦ç‰Œæ ¼å¼ä¸åˆæ³•");
+        return;
+    }
+    if (remove_car_for_current_user(ctx, plate))
+    {
+        save_cars(ctx);
+        save_policies(ctx);
+        save_claims(ctx);
+        append_operation_log(ctx, "DELETE_CAR", plate, "deleted with cascade");
+        set_message(state, L"åˆ é™¤è½¦è¾†æˆåŠŸ");
+    }
+    else
+        set_message(state, L"åˆ é™¤è½¦è¾†å¤±è´¥");
 }
 
-void handle_car_action(AppContext* ctx, GuiState* state, int action)
+/* æ ¹æ® CarAction æ‰§è¡Œä¸šåŠ¡æ“ä½œã€åˆ‡æ¢ç­›é€‰ã€ç¿»é¡µæˆ–è¿”å›é¦–é¡µã€‚ */
+void handle_car_action(AppContext *ctx, GuiState *state, int action)
 {
-    int indices[MAX_CARS] = { 0 };
-    int total = collect_visible_cars(ctx, state->car_show_mine, indices, MAX_CARS);
-    int total_pages = total == 0 ? 1 : (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    switch (action) {
-    case CAR_ADD: handle_add_car(ctx, state); break;
-    case CAR_LIST_ALL: state->car_show_mine = 0; state->car_page = 0; set_message(state, L"ÏÔÊ¾È«²¿³µÁ¾"); break;
-    case CAR_LIST_MINE: state->car_show_mine = 1; state->car_page = 0; set_message(state, L"ÏÔÊ¾ÎÒµÄ³µÁ¾"); break;
-    case CAR_FIND: handle_find_car(ctx, state); break;
-    case CAR_MODIFY: handle_modify_car(ctx, state); break;
-    case CAR_DELETE: handle_delete_car(ctx, state); break;
-    case CAR_PREV: if (state->car_page > 0) state->car_page--; break;
-    case CAR_NEXT: if (state->car_page + 1 < total_pages) state->car_page++; break;
-    case CAR_BACK: state->screen = SCREEN_HOME; set_message(state, L"·µ»ØÖ÷½çÃæ"); break;
-    default: break;
+    int indices[MAX_CARS] = {0};
+    int total = collect_visible_car_indices(ctx, state->car_show_mine, indices, MAX_CARS);
+    PageRange page = make_page_range(state->car_page, total);
+    switch (action)
+    {
+    case CAR_ADD:
+        handle_add_car(ctx, state);
+        break;
+    case CAR_LIST_ALL:
+        state->car_show_mine = 0;
+        state->car_page = 0;
+        set_message(state, L"æ˜¾ç¤ºå…¨éƒ¨è½¦è¾†");
+        break;
+    case CAR_LIST_MINE:
+        state->car_show_mine = 1;
+        state->car_page = 0;
+        set_message(state, L"æ˜¾ç¤ºæˆ‘çš„è½¦è¾†");
+        break;
+    case CAR_FIND:
+        handle_find_car(ctx, state);
+        break;
+    case CAR_MODIFY:
+        handle_modify_car(ctx, state);
+        break;
+    case CAR_DELETE:
+        handle_delete_car(ctx, state);
+        break;
+    case CAR_PREV:
+        if (state->car_page > 0)
+            state->car_page--;
+        break;
+    case CAR_NEXT:
+        if (state->car_page + 1 < page.total_pages)
+            state->car_page++;
+        break;
+    case CAR_BACK:
+        state->screen = SCREEN_HOME;
+        set_message(state, L"è¿”å›ä¸»ç•Œé¢");
+        break;
+    default:
+        break;
     }
 }
 
-int hit_test_cars(const AppContext* ctx, int x, int y) { if (is_admin(ctx)) { Button buttons[] = { {{20, 120, 200, 160}, L"", CAR_ADD}, {{20, 172, 200, 212}, L"", CAR_LIST_ALL}, {{20, 224, 200, 264}, L"", CAR_LIST_MINE}, {{20, 276, 200, 316}, L"", CAR_FIND}, {{20, 328, 200, 368}, L"", CAR_MODIFY}, {{20, 380, 200, 420}, L"", CAR_DELETE}, {{20, 432, 95, 472}, L"", CAR_PREV}, {{125, 432, 200, 472}, L"", CAR_NEXT}, {{20, 492, 200, 532}, L"", CAR_BACK} }; return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y); } else { Button buttons[] = { {{20, 120, 200, 160}, L"", CAR_ADD}, {{20, 224, 200, 264}, L"", CAR_LIST_MINE}, {{20, 276, 200, 316}, L"", CAR_FIND}, {{20, 328, 200, 368}, L"", CAR_MODIFY}, {{20, 380, 200, 420}, L"", CAR_DELETE}, {{20, 432, 95, 472}, L"", CAR_PREV}, {{125, 432, 200, 472}, L"", CAR_NEXT}, {{20, 492, 200, 532}, L"", CAR_BACK} }; return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y); } }
+/* æ ¹æ®èº«ä»½æ„é€ ä¸ç”»é¢ä¸€è‡´çš„æŒ‰é’®çŸ©å½¢ï¼Œå¹¶è¿”å›é¼ æ ‡å‘½ä¸­çš„æ“ä½œç¼–å·ã€‚ */
+int hit_test_cars(const AppContext *ctx, int x, int y)
+{
+    int count;
+    const Button *buttons = car_buttons(ctx, &count);
+    return hit_test_buttons(buttons, count, x, y);
+}

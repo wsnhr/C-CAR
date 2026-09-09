@@ -1,92 +1,61 @@
-#define _CRT_SECURE_NO_WARNINGS
-#include "common.h"
-//¼ì²âÓÃ»§ÃûÊÇ·ñ´æÔÚ£¬´æÔÚ·µ»Ø1£¬²»´æÔÚ·µ»Ø0
-int user_exists(AppContext* ctx, const char* username) {
+ï»¿#define _CRT_SECURE_NO_WARNINGS
+#include "user.h"
+#include "app_utils.h"
+#include "car.h"
+#include "insurance.h"
+#include "password_hash.h"
+
+#include <string.h>
+
+/*
+ * user.c â€”â€” ç”¨æˆ·æ³¨å†Œã€ç™»å½•å’Œç™»å½•çŠ¶æ€æ¨¡å—
+ *
+ * æœ¬æ¨¡å—åªè´Ÿè´£è´¦å·æ•°æ®å’Œèº«ä»½è§„åˆ™ï¼Œä¸è¯»å–æ§åˆ¶å°ï¼Œä¹Ÿä¸ç›´æ¥å†™æ–‡ä»¶ã€‚
+ * current_user ä¸ºç©ºè¡¨ç¤ºæœªç™»å½•ï¼Œå›ºå®šç”¨æˆ·å admin è¡¨ç¤ºç®¡ç†å‘˜ã€‚
+ */
+
+/* é¡ºåºæ£€æŸ¥ç”¨æˆ·åã€‚åªéå† users[0] åˆ° users[user_count-1]ã€‚ */
+int user_exists(const AppContext *ctx, const char *username)
+{
     int i;
 
-    for (i = 0; i < ctx->user_count; i++) {
-        if (strcmp(ctx->users[i].username, username) == 0) {
+    if (!ctx || !username)
+        return 0;
+    for (i = 0; i < ctx->user_count; i++)
+    {
+        if (strcmp(ctx->users[i].username, username) == 0)
+        {
             return 1;
         }
     }
 
     return 0;
 }
-//×¢²áÓÃ»§£¬³É¹¦·µ»Ø1£¬Ê§°Ü·µ»Ø0
-int register_user(AppContext* ctx) {
-    char username[20];
-    char password[20];
-
-    printf("ÇëÊäÈëÓÃ»§Ãû£º");
-    if (scanf("%19s", username) != 1) {
-        printf("ÊäÈë´íÎó\n");
-        return 0;
-    }
-
-    printf("ÇëÊäÈëÃÜÂë£º");
-    if (scanf("%19s", password) != 1) {
-        printf("ÊäÈë´íÎó\n");
-        return 0;
-    }
-
-    if (register_user_account(ctx, username, password)) {
-        printf("×¢²á³É¹¦£¡\n");
-        return 1;
-    }
-
-    if (ctx->user_count >= MAX_USERS)
-        printf("ÓÃ»§ÊıÁ¿ÒÑÂú£¬ÎŞ·¨×¢²á£¡\n");
-    else if (strcmp(username, "admin") == 0 || user_exists(ctx, username))
-        printf("ÓÃ»§ÃûÒÑ´æÔÚ£¬×¢²áÊ§°Ü£¡\n");
-    else
-        printf("×¢²áÊ§°Ü£¡\n");
-
-    return 0;
-}
-//µÇÂ¼ÓÃ»§£¬³É¹¦·µ»Ø1£¬Ê§°Ü·µ»Ø0
-int login_user(AppContext* ctx) {
-    char username[20];
-    char password[20];
-
-    printf("ÇëÊäÈëÓÃ»§Ãû£º");
-    if (scanf("%19s", username) != 1) {
-        printf("ÊäÈë´íÎó\n");
-        return 0;
-    }
-
-    printf("ÇëÊäÈëÃÜÂë£º");
-    if (scanf("%19s", password) != 1) {
-        printf("ÊäÈë´íÎó\n");
-        return 0;
-    }
-
-    if (login_user_account(ctx, username, password)) {
-        printf("µÇÂ¼³É¹¦£¬»¶Ó­ %s£¡\n", ctx->current_user);
-        return 1;
-    }
-
-    printf("ÓÃ»§Ãû»òÃÜÂë´íÎó\n");
-    return 0;
-}
-/* ================= Í³Ò»ÈÏÖ¤ÓëµÇÂ¼×´Ì¬½Ó¿Ú ================= */
-/* ÅĞ¶Ïµ±Ç°ÊÇ·ñÒÑµÇÂ¼ */
-int app_is_logged_in(const AppContext* ctx)
+/* ================= ç»Ÿä¸€è®¤è¯ä¸ç™»å½•çŠ¶æ€æ¥å£ ================= */
+/*
+ * åˆ¤æ–­æ˜¯å¦ç™»å½•ã€‚&& ä¼šçŸ­è·¯ï¼šctx ä¸º NULL æ—¶ä¸ä¼šç»§ç»­è®¿é—® ctx->current_userï¼Œ
+ * å› è€Œä¸ä¼šå‘ç”Ÿç©ºæŒ‡é’ˆè®¿é—®ã€‚
+ */
+int app_is_logged_in(const AppContext *ctx)
 {
     return ctx && ctx->current_user[0] != '\0';
 }
-/* ÅĞ¶Ïµ±Ç°ÊÇ·ñÎª¹ÜÀíÔ± */
-int app_is_admin(const AppContext* ctx)
+/* åªæœ‰å·²ç™»å½•ä¸” current_user ä¸ "admin" å®Œå…¨ç›¸ç­‰æ—¶æ‰è¿”å›çœŸã€‚ */
+int app_is_admin(const AppContext *ctx)
 {
     return app_is_logged_in(ctx) && strcmp(ctx->current_user, "admin") == 0;
 }
-/* Í³Ò»×¢²á½Ó¿Ú£º¹© GUI ºÍ¿ØÖÆÌ¨¸´ÓÃ */
-int register_user_account(AppContext* ctx, const char* username, const char* password)
+/*
+ * ç»Ÿä¸€æ³¨å†Œæ¥å£ã€‚ä¾æ¬¡æ ¡éªŒæŒ‡é’ˆã€ç©ºä¸²ã€å®¹é‡ã€ä¿ç•™åå’Œé‡å¤åï¼Œç„¶åæŠŠæ•°æ®
+ * å†™å…¥ users[user_count]ã€‚å¯†ç å…ˆåŠ éšæœºç›å¹¶è®¡ç®— SHA-256ï¼Œç»“æ„ä½“ä¸­åªä¿å­˜
+ * ç›å’Œå“ˆå¸Œçš„åå…­è¿›åˆ¶æ–‡æœ¬ã€‚æ–‡ä»¶ä¿å­˜ç”± GUI æ§åˆ¶å±‚ç»Ÿä¸€è´Ÿè´£ã€‚
+ */
+int register_user_account(AppContext *ctx, const char *username, const char *password)
 {
-    unsigned char salt[16];
-    unsigned char hash[32];
-    User* u;
+    User *user;
 
-    if (!ctx || !username || !password || username[0] == '\0' || password[0] == '\0')
+    if (!ctx || !validate_string_len(username, (int)sizeof(ctx->users[0].username)) ||
+        !validate_string_len(password, PASSWORD_INPUT_CAPACITY))
         return 0;
 
     if (ctx->user_count >= MAX_USERS)
@@ -95,281 +64,86 @@ int register_user_account(AppContext* ctx, const char* username, const char* pas
     if (strcmp(username, "admin") == 0 || user_exists(ctx, username))
         return 0;
 
-    u = &ctx->users[ctx->user_count];
-
-    strcpy(u->username, username);
-
-    /* Éú³ÉËæ»úÑÎ£¬¼ÆËã¼ÓÑÎ SHA-256 ¹şÏ££¬²¢ÒÔÊ®Áù½øÖÆ×Ö·û´®±£´æ */
-    generate_salt(salt, sizeof(salt));
-    hash_password(password, salt, sizeof(salt), hash);
-
-    hex_encode(salt, sizeof(salt), u->salt);
-    hex_encode(hash, sizeof(hash), u->password);
-
+    user = &ctx->users[ctx->user_count];
+    memset(user, 0, sizeof(*user));
+    if (!copy_text(user->username, sizeof(user->username), username) ||
+        !password_hash_create(password, user->salt, user->password))
+    {
+        memset(user, 0, sizeof(*user));
+        return 0;
+    }
     ctx->user_count++;
-    save_users(ctx);
     return 1;
 }
-/* Í³Ò»µÇÂ¼½Ó¿Ú£º¹© GUI ºÍ¿ØÖÆÌ¨¸´ÓÃ */
-int login_user_account(AppContext* ctx, const char* username, const char* password)
+/*
+ * ç»Ÿä¸€ç™»å½•æ¥å£ã€‚ç®¡ç†å‘˜æ˜¯å†…ç½®ç‰¹æ®Šåˆ†æ”¯ï¼›æ™®é€šç”¨æˆ·å…ˆæŒ‰ç”¨æˆ·åæ‰¾åˆ°è®°å½•ï¼Œ
+ * å†ç”¨åŒä¸€ç›å€¼é‡æ–°è®¡ç®—è¾“å…¥å¯†ç çš„å“ˆå¸Œã€‚å“ˆå¸ŒåŒ¹é…åæ‰è®¾ç½® current_userã€‚
+ */
+int login_user_account(AppContext *ctx, const char *username, const char *password)
 {
     int i;
-    unsigned char salt[16];
-    unsigned char hash[32];
-    unsigned char stored_hash[32];
 
     if (!ctx || !username || !password)
         return 0;
 
-    if (strcmp(username, "admin") == 0 && strcmp(password, "123456") == 0) {
-        strcpy(ctx->current_user, "admin");
+    if (strcmp(username, "admin") == 0 && strcmp(password, "123456") == 0)
+    {
+        copy_text(ctx->current_user, sizeof(ctx->current_user), "admin");
         return 1;
     }
 
-    for (i = 0; i < ctx->user_count; i++) {
-        if (strcmp(ctx->users[i].username, username) == 0) {
-            /* È¡³ö¸ÃÓÃ»§±£´æµÄÑÎºÍ¹şÏ££¬ÓÃÍ¬Ò»°ÑÑÎ¶ÔÊäÈëµÄÃÜÂëÖØĞÂ¹şÏ£ºó±È½Ï */
-            if (hex_decode(ctx->users[i].salt, salt, (int)sizeof(salt)) != (int)sizeof(salt))
-                continue;
-            if (hex_decode(ctx->users[i].password, stored_hash, (int)sizeof(stored_hash)) != (int)sizeof(stored_hash))
-                continue;
-
-            hash_password(password, salt, sizeof(salt), hash);
-
-            if (secure_compare(hash, stored_hash, (int)sizeof(hash))) {
-                strcpy(ctx->current_user, username);
-                return 1;
-            }
+    for (i = 0; i < ctx->user_count; i++)
+    {
+        if (strcmp(ctx->users[i].username, username) == 0 &&
+            password_hash_matches(password, ctx->users[i].salt, ctx->users[i].password))
+        {
+            copy_text(ctx->current_user, sizeof(ctx->current_user), username);
+            return 1;
         }
     }
 
     return 0;
 }
-/* Çå³ıµ±Ç°µÇÂ¼ÓÃ»§ */
-void logout_current_user(AppContext* ctx)
+/* æŠŠç¬¬ä¸€ä¸ªå­—ç¬¦è®¾ä¸º '\0'ï¼Œå³å¯è®© current_user æˆä¸ºç©ºå­—ç¬¦ä¸²ã€‚ */
+void logout_current_user(AppContext *ctx)
 {
     if (ctx)
         ctx->current_user[0] = '\0';
 }
 
-/* ================= ÃÜÂë¹şÏ£ / ¼ÓÑÎ ================= */
-/* ¼ÓÑÎ SHA-256£ºhash = SHA256(ÑÎ || ÃÜÂë)¡£
-   ÑÎºÍ¹şÏ£¶¼ÒÔĞ¡Ğ´Ê®Áù½øÖÆ×Ö·û´®±£´æ£¬´ÅÅÌÉÏ²»»á³öÏÖÃ÷ÎÄÃÜÂë¡£ */
-
-/* SHA-256 ÉÏÏÂÎÄ½á¹¹ */
-typedef struct {
-    unsigned int state[8];
-    unsigned char buf[64];
-    unsigned int curlen;         /* »º³åÇøÖĞµ±Ç°Ôİ´æµÄ×Ö½ÚÊı */
-    unsigned long long length;   /* ÒÑ¾­ÍêÕû´¦ÀíµôµÄ×Ö½ÚÊı */
-} Sha256Ctx;
-
-/* SHA-256 ³£Á¿±í K */
-static const unsigned int sha256_K[64] = {
-    0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1,
-    0x923f82a4, 0xab1c5ed5, 0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3,
-    0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174, 0xe49b69c1, 0xefbe4786,
-    0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
-    0x983e5152, 0xa831c66d, 0xb00327c8, 0xbf597fc7, 0xc6e00bf3, 0xd5a79147,
-    0x06ca6351, 0x14292967, 0x27b70a85, 0x2e1b2138, 0x4d2c6dfc, 0x53380d13,
-    0x650a7354, 0x766a0abb, 0x81c2c92e, 0x92722c85, 0xa2bfe8a1, 0xa81a664b,
-    0xc24b8b70, 0xc76c51a3, 0xd192e819, 0xd6990624, 0xf40e3585, 0x106aa070,
-    0x19a4c116, 0x1e376c08, 0x2748774c, 0x34b0bcb5, 0x391c0cb3, 0x4ed8aa4a,
-    0x5b9cca4f, 0x682e6ff3, 0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208,
-    0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
-};
-
-/* Ñ­»·ÓÒÒÆ n Î» */
-#define ROTR32(x, n) (((x) >> (n)) | ((x) << (32 - (n))))
-
-/* Ñ¹Ëõº¯Êı£º´¦ÀíÒ»¸ö 64 ×Ö½ÚµÄ·Ö×é */
-static void sha256_transform(Sha256Ctx* ctx, const unsigned char block[64])
+/*
+ * åˆ é™¤ç”¨æˆ·çš„ä¸šåŠ¡äº‹åŠ¡ï¼šå…ˆåˆ é™¤å…¶è½¦è¾†åŠè½¦è¾†ä¿é™©ï¼Œå†æ¸…ç†å‰©ä½™ä¿é™©æ•°æ®ï¼Œæœ€å
+ * ä»ç”¨æˆ·æ•°ç»„ç§»é™¤è´¦å·ã€‚å‡½æ•°ä¸ä¿å­˜æ–‡ä»¶ã€ä¸å†™æ—¥å¿—ï¼Œè°ƒç”¨è€…ç»Ÿä¸€å¤„ç†è¿™äº›å‰¯ä½œç”¨ã€‚
+ */
+int remove_user_cascade(AppContext *ctx, const char *username)
 {
-    unsigned int w[64];
-    unsigned int a, b, c, d, e, f, g, h, t1, t2;
     int i;
 
-    for (i = 0; i < 16; i++) {
-        w[i] = ((unsigned int)block[i * 4] << 24) |
-               ((unsigned int)block[i * 4 + 1] << 16) |
-               ((unsigned int)block[i * 4 + 2] << 8) |
-               ((unsigned int)block[i * 4 + 3]);
-    }
-    for (i = 16; i < 64; i++) {
-        unsigned int s0 = ROTR32(w[i - 15], 7) ^ ROTR32(w[i - 15], 18) ^ (w[i - 15] >> 3);
-        unsigned int s1 = ROTR32(w[i - 2], 17) ^ ROTR32(w[i - 2], 19) ^ (w[i - 2] >> 10);
-        w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-    }
-
-    a = ctx->state[0]; b = ctx->state[1]; c = ctx->state[2]; d = ctx->state[3];
-    e = ctx->state[4]; f = ctx->state[5]; g = ctx->state[6]; h = ctx->state[7];
-
-    for (i = 0; i < 64; i++) {
-        unsigned int S1 = ROTR32(e, 6) ^ ROTR32(e, 11) ^ ROTR32(e, 25);
-        unsigned int ch = (e & f) ^ ((~e) & g);
-        unsigned int S0 = ROTR32(a, 2) ^ ROTR32(a, 13) ^ ROTR32(a, 22);
-        unsigned int maj = (a & b) ^ (a & c) ^ (b & c);
-
-        t1 = h + S1 + ch + sha256_K[i] + w[i];
-        t2 = S0 + maj;
-
-        h = g; g = f; f = e; e = d + t1;
-        d = c; c = b; b = a; a = t1 + t2;
-    }
-
-    ctx->state[0] += a; ctx->state[1] += b; ctx->state[2] += c; ctx->state[3] += d;
-    ctx->state[4] += e; ctx->state[5] += f; ctx->state[6] += g; ctx->state[7] += h;
-}
-
-/* ³õÊ¼»¯ SHA-256 ÉÏÏÂÎÄ */
-static void sha256_init(Sha256Ctx* ctx)
-{
-    ctx->state[0] = 0x6a09e667; ctx->state[1] = 0xbb67ae85;
-    ctx->state[2] = 0x3c6ef372; ctx->state[3] = 0xa54ff53a;
-    ctx->state[4] = 0x510e527f; ctx->state[5] = 0x9b05688c;
-    ctx->state[6] = 0x1f83d9ab; ctx->state[7] = 0x5be0cd19;
-    ctx->curlen = 0;
-    ctx->length = 0;
-}
-
-/* ×·¼ÓÊı¾İ */
-static void sha256_update(Sha256Ctx* ctx, const unsigned char* data, unsigned int len)
-{
-    unsigned int i;
-
-    for (i = 0; i < len; i++) {
-        ctx->buf[ctx->curlen++] = data[i];
-        if (ctx->curlen == 64) {
-            sha256_transform(ctx, ctx->buf);
-            ctx->length += 64;
-            ctx->curlen = 0;
-        }
-    }
-}
-
-/* ÊÕÎ²£º²¹ÆëÌî³ä²¢Êä³ö 32 ×Ö½ÚÕªÒª */
-static void sha256_final(Sha256Ctx* ctx, unsigned char out[32])
-{
-    unsigned long long bitlen = (ctx->length + (unsigned long long)ctx->curlen) * 8ULL;
-    unsigned char pad = 0x80;
-    int i;
-
-    sha256_update(ctx, &pad, 1);
-
-    while (ctx->curlen != 56) {
-        unsigned char zero = 0x00;
-        sha256_update(ctx, &zero, 1);
-    }
-
-    for (i = 0; i < 8; i++) {
-        unsigned char byte = (unsigned char)(bitlen >> (56 - 8 * i));
-        sha256_update(ctx, &byte, 1);
-    }
-
-    for (i = 0; i < 8; i++) {
-        out[i * 4]     = (unsigned char)(ctx->state[i] >> 24);
-        out[i * 4 + 1] = (unsigned char)(ctx->state[i] >> 16);
-        out[i * 4 + 2] = (unsigned char)(ctx->state[i] >> 8);
-        out[i * 4 + 3] = (unsigned char)(ctx->state[i]);
-    }
-}
-
-/* Éú³ÉËæ»úÑÎ */
-int generate_salt(unsigned char* salt, int len)
-{
-    static int seeded = 0;
-    int i;
-
-    if (!salt || len <= 0)
+    if (!ctx || !app_is_admin(ctx) || !username || strcmp(username, "admin") == 0 ||
+        !user_exists(ctx, username))
         return 0;
 
-    if (!seeded) {
-        srand((unsigned)time(NULL));
-        seeded = 1;
+    for (i = 0; i < ctx->car_count;)
+    {
+        if (strcmp(ctx->cars[i].owner, username) == 0)
+            remove_car(ctx, ctx->cars[i].plate);
+        else
+            ++i;
     }
+    remove_insurance_for_user(ctx, username);
 
-    for (i = 0; i < len; i++)
-        salt[i] = (unsigned char)(rand() & 0xFF);
-
-    return 1;
-}
-
-/* ¼ÆËã¼ÓÑÎ¹şÏ££ºSHA256(salt || password) */
-int hash_password(const char* password, const unsigned char* salt, int salt_len, unsigned char out[32])
-{
-    Sha256Ctx ctx;
-
-    if (!password || !salt || salt_len <= 0 || !out)
-        return 0;
-
-    sha256_init(&ctx);
-    sha256_update(&ctx, salt, (unsigned int)salt_len);
-    sha256_update(&ctx, (const unsigned char*)password, (unsigned int)strlen(password));
-    sha256_final(&ctx, out);
-    return 1;
-}
-
-/* µ¥¸öÊ®Áù½øÖÆ×Ö·û×ªÊıÖµ£¬·Ç·¨×Ö·û·µ»Ø -1 */
-static int hex_val(char c)
-{
-    if (c >= '0' && c <= '9') return c - '0';
-    if (c >= 'a' && c <= 'f') return c - 'a' + 10;
-    if (c >= 'A' && c <= 'F') return c - 'A' + 10;
-    return -1;
-}
-
-/* ¶ş½øÖÆ±àÂëÎªÊ®Áù½øÖÆ×Ö·û´® */
-void hex_encode(const unsigned char* in, int in_len, char* out_hex)
-{
-    static const char digits[] = "0123456789abcdef";
-    int i;
-
-    for (i = 0; i < in_len; i++) {
-        out_hex[i * 2]     = digits[in[i] >> 4];
-        out_hex[i * 2 + 1] = digits[in[i] & 0x0F];
+    for (i = 0; i < ctx->user_count; ++i)
+    {
+        int j;
+        if (strcmp(ctx->users[i].username, username) != 0)
+            continue;
+        for (j = i; j < ctx->user_count - 1; ++j)
+            ctx->users[j] = ctx->users[j + 1];
+        --ctx->user_count;
+        memset(&ctx->users[ctx->user_count], 0, sizeof(ctx->users[0]));
+        if (strcmp(ctx->current_user, username) == 0)
+            logout_current_user(ctx);
+        return 1;
     }
-    out_hex[in_len * 2] = '\0';
+    return 0;
 }
-
-/* Ê®Áù½øÖÆ×Ö·û´®½âÂëÎª¶ş½øÖÆ */
-int hex_decode(const char* hex, unsigned char* out, int out_len)
-{
-    int i = 0;
-    int n = 0;
-
-    if (!hex || !out)
-        return -1;
-
-    while (hex[i] != '\0') {
-        int hi, lo;
-
-        if (hex[i + 1] == '\0')
-            return -1; /* Ê®Áù½øÖÆ×Ö·û¸öÊıÎªÆæÊı */
-
-        hi = hex_val(hex[i]);
-        lo = hex_val(hex[i + 1]);
-        if (hi < 0 || lo < 0)
-            return -1;
-
-        if (n >= out_len)
-            return -1;
-
-        out[n++] = (unsigned char)((hi << 4) | lo);
-        i += 2;
-    }
-
-    return n;
-}
-
-/* ³£Á¿Ê±¼ä±È½Ï£¬ÏàµÈ·µ»Ø 1 */
-int secure_compare(const unsigned char* a, const unsigned char* b, int len)
-{
-    unsigned char diff = 0;
-    int i;
-
-    for (i = 0; i < len; i++)
-        diff |= a[i] ^ b[i];
-
-    return diff == 0;
-}
-

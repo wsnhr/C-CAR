@@ -15,7 +15,13 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="app_utils.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
     <ClCompile Include="main.c">
+      <Filter>源文件</Filter>
+    </ClCompile>
+    <ClCompile Include="password_hash.c">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="car.c">
@@ -24,7 +30,7 @@
     <ClCompile Include="user.c">
       <Filter>源文件</Filter>
     </ClCompile>
-    <ClCompile Include="file.c">
+    <ClCompile Include="storage.c">
       <Filter>源文件</Filter>
     </ClCompile>
     <ClCompile Include="insurance.c">
@@ -47,6 +53,15 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="app_types.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="app_utils.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="car.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
     <ClInclude Include="common.h">
       <Filter>头文件</Filter>
     </ClInclude>
@@ -54,6 +69,18 @@
       <Filter>头文件</Filter>
     </ClInclude>
     <ClInclude Include="gui_internal.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="insurance.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="password_hash.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="storage.h">
+      <Filter>头文件</Filter>
+    </ClInclude>
+    <ClInclude Include="user.h">
       <Filter>头文件</Filter>
     </ClInclude>
   </ItemGroup>

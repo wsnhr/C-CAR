@@ -1,105 +1,78 @@
-#define _CRT_SECURE_NO_WARNINGS
+ï»¿#define _CRT_SECURE_NO_WARNINGS
 #include "gui_internal.h"
 
-static void draw_ui(const AppContext* ctx, const GuiState* state)
+/*
+ * gui.c â€”â€” GUI æ€»å…¥å£ä¸ä¸»äº‹ä»¶å¾ªç¯
+ *
+ * æœ¬æ–‡ä»¶å†³å®šâ€œå½“å‰ç”»å“ªä¸ªé¡µé¢â€å’Œâ€œé¼ æ ‡ç‚¹å‡»äº¤ç»™å“ªä¸ªé¡µé¢å¤„ç†â€ã€‚å…·ä½“ç»˜åˆ¶ã€
+ * è¾“å…¥æ¡†å’Œä¸šåŠ¡æ“ä½œåˆ†æ•£åœ¨ gui_common/gui_home/gui_car/gui_insurance ä¸­ã€‚
+ */
+
+/* æ ¹æ® state->screen æ„é€ å½“å‰é¡µé¢æŒ‰é’®å¹¶è°ƒç”¨å¯¹åº” draw_* å‡½æ•°ã€‚ */
+static void draw_ui(const AppContext *ctx, const GuiState *state)
 {
     setbkcolor(RGB(236, 242, 248));
     cleardevice();
-    if (state->screen == SCREEN_HOME) {
-        if (is_admin(ctx)) {
-            Button buttons[] = {
-                {{20, 120, 200, 165}, L"×¢²á", HOME_REGISTER},
-                {{20, 180, 200, 225}, L"µÇÂ¼", HOME_LOGIN},
-                {{20, 240, 200, 285}, L"µÇ³ö", HOME_LOGOUT},
-                {{20, 300, 200, 345}, L"³µÁ¾¹ÜÀí", HOME_CARS},
-                {{20, 360, 200, 405}, L"±£µ¥¹ÜÀí", HOME_INSURANCE},
-                {{20, 420, 200, 465}, L"É¾³ıÓÃ»§", HOME_DELETE_USER},
-                {{20, 480, 200, 525}, L"ÍË³ö", HOME_EXIT}
-            };
-            draw_home(ctx, state, buttons, (int)(sizeof(buttons) / sizeof(buttons[0])));
-        } else {
-            Button buttons[] = {
-                {{20, 120, 200, 165}, L"×¢²á", HOME_REGISTER},
-                {{20, 180, 200, 225}, L"µÇÂ¼", HOME_LOGIN},
-                {{20, 240, 200, 285}, L"µÇ³ö", HOME_LOGOUT},
-                {{20, 300, 200, 345}, L"³µÁ¾¹ÜÀí", HOME_CARS},
-                {{20, 360, 200, 405}, L"±£µ¥¹ÜÀí", HOME_INSURANCE},
-                {{20, 420, 200, 465}, L"ÍË³ö", HOME_EXIT}
-            };
-            draw_home(ctx, state, buttons, (int)(sizeof(buttons) / sizeof(buttons[0])));
-        }
-    } else if (state->screen == SCREEN_CARS) {
-        if (is_admin(ctx)) {
-            Button buttons[] = {
-                {{20, 120, 200, 160}, L"Ìí¼Ó³µÁ¾", CAR_ADD},
-                {{20, 172, 200, 212}, L"²é¿´È«²¿", CAR_LIST_ALL},
-                {{20, 224, 200, 264}, L"²é¿´ÎÒµÄ", CAR_LIST_MINE},
-                {{20, 276, 200, 316}, L"²éÕÒ³µÁ¾", CAR_FIND},
-                {{20, 328, 200, 368}, L"±à¼­³µÁ¾", CAR_MODIFY},
-                {{20, 380, 200, 420}, L"É¾³ı³µÁ¾", CAR_DELETE},
-                {{20, 432, 95, 472}, L"ÉÏÒ»Ò³", CAR_PREV},
-                {{125, 432, 200, 472}, L"ÏÂÒ»Ò³", CAR_NEXT},
-                {{20, 492, 200, 532}, L"·µ»Ø", CAR_BACK}
-            };
-            draw_cars(ctx, state, buttons, (int)(sizeof(buttons) / sizeof(buttons[0])));
-        } else {
-            Button buttons[] = {
-                {{20, 120, 200, 160}, L"Ìí¼Ó³µÁ¾", CAR_ADD},
-                {{20, 224, 200, 264}, L"²é¿´ÎÒµÄ", CAR_LIST_MINE},
-                {{20, 276, 200, 316}, L"²éÕÒ³µÁ¾", CAR_FIND},
-                {{20, 328, 200, 368}, L"±à¼­³µÁ¾", CAR_MODIFY},
-                {{20, 380, 200, 420}, L"É¾³ı³µÁ¾", CAR_DELETE},
-                {{20, 432, 95, 472}, L"ÉÏÒ»Ò³", CAR_PREV},
-                {{125, 432, 200, 472}, L"ÏÂÒ»Ò³", CAR_NEXT},
-                {{20, 492, 200, 532}, L"·µ»Ø", CAR_BACK}
-            };
-            draw_cars(ctx, state, buttons, (int)(sizeof(buttons) / sizeof(buttons[0])));
-        }
-    } else {
-        Button buttons[] = {
-            {{20, 120, 200, 160}, L"Ìí¼Ó±£µ¥", INS_ADD_POLICY},
-            {{20, 172, 200, 212}, L"É¾³ı±£µ¥", INS_DELETE_POLICY},
-            {{20, 224, 200, 264}, L"²éÑ¯±£µ¥", INS_FIND_POLICY},
-            {{20, 276, 200, 316}, L"±£µ¥ÁĞ±í", INS_LIST_POLICIES},
-            {{20, 328, 200, 368}, L"ĞÂÔöÀíÅâ", INS_ADD_CLAIM},
-            {{20, 380, 200, 420}, L"ÀíÅâÁĞ±í", INS_LIST_CLAIMS},
-            {{20, 432, 200, 472}, L"ÉóºËÀíÅâ", INS_REVIEW_CLAIM},
-            {{20, 484, 200, 524}, L"½á°¸ÀíÅâ", INS_SETTLE_CLAIM},
-            {{20, 536, 95, 576}, L"ÉÏÒ»Ò³", INS_PREV},
-            {{125, 536, 200, 576}, L"ÏÂÒ»Ò³", INS_NEXT},
-            {{20, 588, 200, 628}, L"·µ»Ø", INS_BACK}
-        };
-        draw_insurance(ctx, state, buttons, (int)(sizeof(buttons) / sizeof(buttons[0])));
+    if (state->screen == SCREEN_HOME)
+    {
+        draw_home(ctx, state);
+    }
+    else if (state->screen == SCREEN_CARS)
+    {
+        draw_cars(ctx, state);
+    }
+    else
+    {
+        draw_insurance(ctx, state);
     }
     FlushBatchDraw();
 }
 
-void gui_run(AppContext* ctx)
+/*
+ * GUI ç”Ÿå‘½å‘¨æœŸï¼šåŠ è½½æ•°æ® -> åˆå§‹åŒ–çŠ¶æ€å’Œçª—å£ -> å¾ªç¯ç»˜åˆ¶/æ¥æ”¶ç‚¹å‡» -> å…³é—­ã€‚
+ * running æ˜¯å¾ªç¯å¼€å…³ï¼Œé¦–é¡µçš„â€œé€€å‡ºâ€æ“ä½œé€šè¿‡ int* ä¿®æ”¹å®ƒã€‚
+ */
+void gui_run(AppContext *ctx)
 {
     load_users(ctx);
     load_cars(ctx);
     load_policies(ctx);
-    // ÔÚ¼ÓÔØ±£µ¥ºóÁ¢¼´¸üĞÂ±£µ¥×´Ì¬£¨×Ô¶¯¹ıÆÚ£©
+    // åœ¨åŠ è½½ä¿å•åç«‹å³æ›´æ–°ä¿å•çŠ¶æ€ï¼ˆè‡ªåŠ¨è¿‡æœŸï¼‰
     update_policy_active_status(ctx);
     load_claims(ctx);
 
-    GuiState state; memset(&state, 0, sizeof(state)); state.screen = SCREEN_HOME; state.insurance_view = VIEW_POLICY_LIST; set_message(&state, L"Çë´Ó×ó²àÑ¡Ôñ¹¦ÄÜ");
+    GuiState state;
+    memset(&state, 0, sizeof(state)); /* å…ˆæŠŠé¡µç ã€ç­›é€‰ç­‰æˆå‘˜å…¨éƒ¨æ¸…é›¶ã€‚ */
+    state.screen = SCREEN_HOME;
+    state.insurance_view = VIEW_POLICY_LIST;
+    set_message(&state, L"è¯·ä»å·¦ä¾§é€‰æ‹©åŠŸèƒ½");
 
     initgraph(WINDOW_WIDTH, WINDOW_HEIGHT, EX_SHOWCONSOLE);
     BeginBatchDraw();
     int running = 1;
-    while (running) {
+    while (running)
+    {
         draw_ui(ctx, &state);
+        /* ExMessage æ˜¯ EasyX çš„äº‹ä»¶ç»“æ„ä½“ï¼ŒåŒ…å«äº‹ä»¶ç§ç±»å’Œé¼ æ ‡åæ ‡ã€‚ */
         ExMessage msg;
-        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN) {
+        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN)
+        {
+            /* å…ˆå‘½ä¸­æµ‹è¯•å¾—åˆ°æ“ä½œç¼–å·ï¼Œå†æŠŠç¼–å·äº¤ç»™å½“å‰é¡µé¢çš„å¤„ç†å™¨ã€‚ */
             int action = 0;
-            if (state.screen == SCREEN_HOME) action = hit_test_home(ctx, msg.x, msg.y);
-            else if (state.screen == SCREEN_CARS) action = hit_test_cars(ctx, msg.x, msg.y);
-            else action = hit_test_insurance(msg.x, msg.y);
-            if (state.screen == SCREEN_HOME) handle_home_action(ctx, &state, action, &running);
-            else if (state.screen == SCREEN_CARS) handle_car_action(ctx, &state, action);
-            else handle_insurance_action(ctx, &state, action);
+            if (state.screen == SCREEN_HOME)
+                action = hit_test_home(ctx, msg.x, msg.y);
+            else if (state.screen == SCREEN_CARS)
+                action = hit_test_cars(ctx, msg.x, msg.y);
+            else
+                action = hit_test_insurance(msg.x, msg.y);
+            if (state.screen == SCREEN_HOME)
+                handle_home_action(ctx, &state, action, &running);
+            else if (state.screen == SCREEN_CARS)
+                handle_car_action(ctx, &state, action);
+            else
+                handle_insurance_action(ctx, &state, action);
         }
     }
-    EndBatchDraw(); closegraph();
+    EndBatchDraw();
+    closegraph();
 }

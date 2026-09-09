@@ -1,428 +1,446 @@
-#define _CRT_SECURE_NO_WARNINGS
-#include "common.h"
+ï»¿#define _CRT_SECURE_NO_WARNINGS
+#include "insurance.h"
+#include "app_utils.h"
+#include "car.h"
+#include "user.h"
 
-/* helper: compare dates y/m/d. return -1 if a<b, 0 if equal, 1 if a>b */
-static int compare_date(const Date* a, const Date* b) {
-    if (!a || !b) return 0;
-    if (a->year != b->year) return (a->year < b->year) ? -1 : 1;
-    if (a->month != b->month) return (a->month < b->month) ? -1 : 1;
-    if (a->day != b->day) return (a->day < b->day) ? -1 : 1;
-    return 0;
-}
+#include <string.h>
 
-static Date today_date(void) {
-    time_t t = time(NULL);
-    struct tm tmv;
-#ifdef _WIN32
-    localtime_s(&tmv, &t);
-#else
-    localtime_r(&t, &tmv);
-#endif
-    Date d;
-    d.year = tmv.tm_year + 1900;
-    d.month = tmv.tm_mon + 1;
-    d.day = tmv.tm_mday;
-    return d;
-}
+/*
+ * insurance.c â€”â€” ä¿å•ã€ç†èµ”ã€é‡‘é¢è®¡ç®—å’Œæƒé™æ§åˆ¶
+ *
+ * æ•°æ®å…³è”é“¾ä¸º Car.plate -> Policy.plate -> Claim.policy_idã€‚è¿™é‡Œæ²¡æœ‰æ•°æ®åº“
+ * è‡ªåŠ¨ç»´æŠ¤å¤–é”®ï¼Œæ‰€ä»¥æ–°å¢å‰å¿…é¡»æ‰‹å·¥æŸ¥æ‰¾å…³è”å¯¹è±¡ï¼Œåˆ é™¤æ—¶ä¹Ÿè¦ä¸»åŠ¨çº§è”æ¸…ç†ã€‚
+ * æ‰€æœ‰ä¼šæˆåŠŸ/å¤±è´¥çš„ä¸šåŠ¡æ“ä½œéƒ½ç»Ÿä¸€ä½¿ç”¨ 1=æˆåŠŸã€0=å¤±è´¥ï¼Œå¹¶åœ¨å…¬å¼€çš„
+ * åç§°ä»¥ _for_current_user ç»“å°¾çš„å…¬å¼€æ¥å£è´Ÿè´£æ‰§è¡Œèº«ä»½å’Œæ‰€æœ‰æƒæ£€æŸ¥ã€‚
+ */
 
-/* check policies and auto-expire based on end_date */
-void update_policy_active_status(AppContext* ctx) {
-    if (!ctx) return;
-    Date now = today_date();
-    for (int i = 0; i < ctx->policy_count; ++i) {
-        Policy* p = &ctx->policies[i];
-        if (p->active) {
-            if (p->end_date.year != 0) {
-                if (compare_date(&p->end_date, &now) < 0) {
-                    p->active = 0;
-                    append_operation_log(ctx, "AUTO_EXPIRE_POLICY", p->policy_id, "policy expired by end_date");
-                }
-            }
-        }
+/*
+ * æ‰«ææ‰€æœ‰æœ‰æ•ˆä¿å•ï¼Œæ ¹æ®ç”Ÿæ•ˆæ—¥æœŸã€å¤±æ•ˆæ—¥æœŸå’Œä»Šå¤©çš„å…ˆåå…³ç³»é‡æ–°è®¡ç®— activeã€‚
+ *
+ * &p->end_date å–å¾—åµŒå¥— Date æˆå‘˜çš„åœ°å€ï¼Œäº¤ç»™æ—¥æœŸæ¯”è¾ƒå‡½æ•°è¯»å–ã€‚
+ */
+void update_policy_active_status(AppContext *ctx)
+{
+    Date today;
+    int i;
+
+    if (!ctx)
+        return;
+    today = date_today();
+    for (i = 0; i < ctx->policy_count; ++i)
+    {
+        Policy *policy = &ctx->policies[i];
+        if (!date_is_valid(&policy->start_date) || !date_is_valid(&policy->end_date))
+            continue; /* å…¼å®¹æ²¡æœ‰æ—¥æœŸå­—æ®µçš„æ—§æ•°æ®ã€‚ */
+        policy->active = date_compare(&policy->start_date, &today) <= 0 &&
+                         date_compare(&policy->end_date, &today) >= 0;
     }
 }
 
-/*
- insurance.c
- ÊµÏÖ±£µ¥ÓëÀíÅâ¹ÜÀí£¬ÒÔ¼°»ùÓÚ³µÁ¾²ÎÊı£¨³µ¼Û¡¢¹ºÂòÄê·İ¡¢Î¥ÕÂµÈ¼¶µÈ£©
- µÄÊ¾Àı±£·ÑÓëÅâ¸¶¼ÆËã¹«Ê½¡£
+/* è®¡ç®—è½¦è¾†å¹´é¾„ï¼›æœªæ¥å¹´ä»½è¢«é™åˆ¶ä¸º 0ï¼Œé¿å…äº§ç”Ÿè´Ÿæ•°å¹´é¾„ã€‚ */
+static int car_age_years(const Car *car)
+{
+    Date today;
+    int age;
 
- ËµÃ÷£¨Éè¼ÆÒªµã£©£º
- - ±£µ¥£¨Policy£©ÔÚ¼ÓÈëÊ±£¬»á¸ù¾İ¹ØÁª³µÁ¾ĞÅÏ¢×Ô¶¯¼ÆËã½¨Òé±£¶îÓë±£·Ñ¡£
- - ÀíÅâ£¨Claim£©ÔÚ´´½¨Ê±£¬»á¸ù¾İ±£µ¥¡¢¹ØÁª³µÁ¾ÓëÉêÇë½ğ¶î¼ÆËã¿ÉÅú×¼µÄÅâ¸¶£¨approved_amount£©£¬µ«Ö»ÓĞÔÚ settle_claim ±»µ÷ÓÃÊ±²Å±ê¼ÇÎªÒÑ½á°¸¡£
- - ÕâÀï¸ø³öµÄÊÇÊ¾ÀıĞÔ¼ÆËãÂß¼­£¬±ãÓÚÔÚÏîÄ¿ÖĞÌæ»»ÎªÒµÎñÕæÊµ¹æÔò¡£
- - ËùÓĞº¯Êı¶¼¾¡Á¿·µ»Ø 0 ±íÊ¾³É¹¦£¬-1 ±íÊ¾Ê§°Ü£¨²ÎÊı/Î´ÕÒµ½µÈ£©¡£
- - ×¢£ºµ÷ÓÃ·½Ó¦È·±£ ctx ÒÑÍ¨¹ı init_app ³õÊ¼»¯²¢ÇÒ±£´æ/¼ÓÔØº¯ÊıÓë³Ö¾Ã»¯Âß¼­ÔÚ file.c ÖĞÓëĞÂ×Ö¶Î¼æÈİ¡£
-*/
-
-/* ¸¨Öú£º»ñÈ¡µ±Ç°Äê */
-static int current_year(void) {
-    time_t t = time(NULL);
-    struct tm tmv;
-#ifdef _WIN32
-    localtime_s(&tmv, &t);
-#else
-    localtime_r(&t, &tmv);
-#endif
-    return tmv.tm_year + 1900;
-}
-
-/* ¸¨Öú£º¼ÆËã³µÁ¾ÄêÁä£¨Äê£©£¬Èô purchase_date.year==0 Ôò·µ»Ø0 */
-static int car_age_years(const Car* car) {
-    if (!car) return 0;
-    if (car->purchase_date.year <= 0) return 0;
-    int age = current_year() - car->purchase_date.year;
-    if (age < 0) age = 0;
+    if (!car)
+        return 0;
+    if (car->purchase_date.year <= 0)
+        return 0;
+    today = date_today();
+    age = today.year - car->purchase_date.year;
+    if (age < 0)
+        age = 0;
     return age;
 }
 
 /*
- ¼ÆËã±£·ÑµÄÊ¾Àı¹«Ê½£¨Äê±£·Ñ£©
- ËµÃ÷£¨Ê¾Àı£¬±ãÓÚÌæ»»£©£º
- - »ù´¡·ÑÂÊ base_rate = 2.0% µÄ³µ¼Û£¨¼´ 0.02 * price£©
- - ÄêÁäÒò×Ó age_factor£ºĞÂ³µ£¨0Äê£©ÏµÊı 1.0£¬Ëæ×ÅÄêÁäÔö¼Ó±£·Ñ¿ÉÄÜÏÂ½µ£¬
-   age_factor = max(0.6, 1.0 - age * 0.03) £¨Ã¿Äê¼õÉÙ3%£¬ÏÂÏŞ0.6£©
- - Î¥ÕÂÒò×Ó violation_factor£º¸ù¾İÎ¥ÕÂÑÏÖØ¶ÈÔö¼Ó±£·Ñ
+ è®¡ç®—ä¿è´¹çš„ç¤ºä¾‹å…¬å¼ï¼ˆå¹´ä¿è´¹ï¼‰
+ è¯´æ˜ï¼ˆç¤ºä¾‹ï¼Œä¾¿äºæ›¿æ¢ï¼‰ï¼š
+ - åŸºç¡€è´¹ç‡ base_rate = 2.0% çš„è½¦ä»·ï¼ˆå³ 0.02 * priceï¼‰
+ - å¹´é¾„å› å­ age_factorï¼šæ–°è½¦ï¼ˆ0å¹´ï¼‰ç³»æ•° 1.0ï¼Œéšç€å¹´é¾„å¢åŠ ä¿è´¹å¯èƒ½ä¸‹é™ï¼Œ
+   age_factor = max(0.6, 1.0 - age * 0.03) ï¼ˆæ¯å¹´å‡å°‘3%ï¼Œä¸‹é™0.6ï¼‰
+ - è¿ç« å› å­ violation_factorï¼šæ ¹æ®è¿ç« ä¸¥é‡åº¦å¢åŠ ä¿è´¹
    VIOLATION_NONE => 1.0
    VIOLATION_VERY_MINOR => 1.05
    VIOLATION_MINOR => 1.10
    VIOLATION_MODERATE => 1.25
    VIOLATION_RELATIVELY_SERIOUS => 1.5
    VIOLATION_SERIOUS => 2.0
- - ×îÖÕ premium = purchase_price * base_rate * age_factor * violation_factor
- - ×îĞ¡±£·Ñ×îµÍÎª 100 Ôª£¨Ê¾Àı£©
+ - æœ€ç»ˆ premium = purchase_price * base_rate * age_factor * violation_factor
+ - æœ€å°ä¿è´¹æœ€ä½ä¸º 100 å…ƒï¼ˆç¤ºä¾‹ï¼‰
 */
-double calculate_premium_for_car(const Car* car) {
-    if (!car) return 0.0;
+/* car åªç”¨äºè¯»å–ï¼Œå› æ­¤å‚æ•°ä½¿ç”¨ const Car*ï¼›æ— æœ‰æ•ˆè½¦è¾†æ—¶è¿”å› 0.0ã€‚ */
+double calculate_premium_for_car(const Car *car)
+{
+    if (!car)
+        return 0.0;
     double price = car->purchase_price;
-    if (price <= 0.0) price = 20000.0; // Èç¹ûÎ´ÖªÔòÈ¡Ä¬ÈÏ¹À¼Æ£¨Ê¾Àı£©
+    if (price <= 0.0)
+        price = 20000.0;           // å¦‚æœæœªçŸ¥åˆ™å–é»˜è®¤ä¼°è®¡ï¼ˆç¤ºä¾‹ï¼‰
     const double base_rate = 0.02; // 2%
     int age = car_age_years(car);
     double age_factor = 1.0 - age * 0.03;
-    if (age_factor < 0.6) age_factor = 0.6;
+    if (age_factor < 0.6)
+        age_factor = 0.6;
 
     double violation_factor = 1.0;
-    switch (car->violation) {
-    case VIOLATION_VERY_MINOR: violation_factor = 1.05; break;
-    case VIOLATION_MINOR: violation_factor = 1.10; break;
-    case VIOLATION_MODERATE: violation_factor = 1.25; break;
-    case VIOLATION_RELATIVELY_SERIOUS: violation_factor = 1.5; break;
-    case VIOLATION_SERIOUS: violation_factor = 2.0; break;
-    default: violation_factor = 1.0; break;
+    switch (car->violation)
+    {
+    case VIOLATION_VERY_MINOR:
+        violation_factor = 1.05;
+        break;
+    case VIOLATION_MINOR:
+        violation_factor = 1.10;
+        break;
+    case VIOLATION_MODERATE:
+        violation_factor = 1.25;
+        break;
+    case VIOLATION_RELATIVELY_SERIOUS:
+        violation_factor = 1.5;
+        break;
+    case VIOLATION_SERIOUS:
+        violation_factor = 2.0;
+        break;
+    default:
+        violation_factor = 1.0;
+        break;
     }
 
     double premium = price * base_rate * age_factor * violation_factor;
-    if (premium < 100.0) premium = 100.0;
+    if (premium < 100.0)
+        premium = 100.0;
     return premium;
 }
 
 /*
- ¼ÆËãÀíÅâ¿ÉÅú×¼½ğ¶îµÄÊ¾Àı¹«Ê½£º
- - coverage_limit = policy->coverage_limit £¨Í¨³£»ùÓÚ¹º³µ¼ÛµÄ±ÈÀı£©
- - request_amount = ÉêÇë½ğ¶î
- - »ù´¡Åâ¸¶±ÈÀı base_ratio = 1.0
- - Î¥ÕÂ»á½µµÍÅâ¸¶±ÈÀı£ºÃ¿Ò»¼¶Î¥ÕÂ½µµÍ 5% £¬ÑÏÖØÎ¥ÕÂ½µµÍ¸ü¶à
- - ÄêÁä½µµÍÅâ¸¶£ºÀÏ¾É³µÁ¾ÔÚÀíÅâÊ±Ìæ»»/ĞŞ¸´¼ÛÖµµÍ£¬°´Äê½µµÍ±ÈÀı
- - ×îÖÕ payout = min(request_amount, coverage_limit) * payout_ratio
- - payout_ratio ·¶Î§ [0.2, 1.0]
+ è®¡ç®—ç†èµ”å¯æ‰¹å‡†é‡‘é¢çš„ç¤ºä¾‹å…¬å¼ï¼š
+ - coverage_limit = policy->coverage_limit ï¼ˆé€šå¸¸åŸºäºè´­è½¦ä»·çš„æ¯”ä¾‹ï¼‰
+ - request_amount = ç”³è¯·é‡‘é¢
+ - åŸºç¡€èµ”ä»˜æ¯”ä¾‹ base_ratio = 1.0
+ - è¿ç« ä¼šé™ä½èµ”ä»˜æ¯”ä¾‹ï¼šæ¯ä¸€çº§è¿ç« é™ä½ 5% ï¼Œä¸¥é‡è¿ç« é™ä½æ›´å¤š
+ - å¹´é¾„é™ä½èµ”ä»˜ï¼šè€æ—§è½¦è¾†åœ¨ç†èµ”æ—¶æ›¿æ¢/ä¿®å¤ä»·å€¼ä½ï¼ŒæŒ‰å¹´é™ä½æ¯”ä¾‹
+ - æœ€ç»ˆ payout = min(request_amount, coverage_limit) * payout_ratio
+ - payout_ratio èŒƒå›´ [0.2, 1.0]
 */
-double calculate_payout_for_claim(const Policy* policy, const Car* car, double request_amount) {
-    if (!policy || !car || request_amount <= 0.0) return 0.0;
+/* å…ˆæŒ‰ä¿é¢æˆªæ–­ç”³è¯·é‡‘é¢ï¼Œå†å åŠ è½¦é¾„å’Œè¿ç« ç³»æ•°ï¼Œè¿”å›å»ºè®®æ‰¹å‡†é‡‘é¢ã€‚ */
+double calculate_payout_for_claim(const Policy *policy, const Car *car, double request_amount)
+{
+    if (!policy || !car || request_amount <= 0.0)
+        return 0.0;
 
     double limit = policy->coverage_limit;
-    if (limit <= 0.0) {
-        // Èô±£µ¥Ã»ÓĞÉè¶¨ÏŞ¶î£¬Ê¹ÓÃ³µ¼ÛµÄ 80% ×÷ÎªÄ¬ÈÏ±£¶î
+    if (limit <= 0.0)
+    {
+        // è‹¥ä¿å•æ²¡æœ‰è®¾å®šé™é¢ï¼Œä½¿ç”¨è½¦ä»·çš„ 80% ä½œä¸ºé»˜è®¤ä¿é¢
         limit = car->purchase_price * 0.8;
-        if (limit <= 0.0) limit = 5000.0;
+        if (limit <= 0.0)
+            limit = 5000.0;
     }
 
     double payout_base = request_amount;
-    if (payout_base > limit) payout_base = limit;
+    if (payout_base > limit)
+        payout_base = limit;
 
-    // Î¥ÕÂÓ°Ïì
+    // è¿ç« å½±å“
     double violation_penalty = 0.0;
-    switch (car->violation) {
-    case VIOLATION_VERY_MINOR: violation_penalty = 0.05; break;
-    case VIOLATION_MINOR: violation_penalty = 0.10; break;
-    case VIOLATION_MODERATE: violation_penalty = 0.20; break;
-    case VIOLATION_RELATIVELY_SERIOUS: violation_penalty = 0.35; break;
-    case VIOLATION_SERIOUS: violation_penalty = 0.6; break;
-    default: violation_penalty = 0.0; break;
+    switch (car->violation)
+    {
+    case VIOLATION_VERY_MINOR:
+        violation_penalty = 0.05;
+        break;
+    case VIOLATION_MINOR:
+        violation_penalty = 0.10;
+        break;
+    case VIOLATION_MODERATE:
+        violation_penalty = 0.20;
+        break;
+    case VIOLATION_RELATIVELY_SERIOUS:
+        violation_penalty = 0.35;
+        break;
+    case VIOLATION_SERIOUS:
+        violation_penalty = 0.6;
+        break;
+    default:
+        violation_penalty = 0.0;
+        break;
     }
 
     int age = car_age_years(car);
-    double age_penalty = age * 0.02; // Ã¿Äê½µµÍ2%
-    if (age_penalty > 0.6) age_penalty = 0.6; // ÄêÁä³Í·£ÉÏÏŞ
+    double age_penalty = age * 0.02; // æ¯å¹´é™ä½2%
+    if (age_penalty > 0.6)
+        age_penalty = 0.6; // å¹´é¾„æƒ©ç½šä¸Šé™
 
     double payout_ratio = 1.0 - violation_penalty - age_penalty;
-    if (payout_ratio < 0.2) payout_ratio = 0.2; // ×îµÍ20%¿ÉÒÔÅâ¸¶£¨Ê¾Àı£©
-    if (payout_ratio > 1.0) payout_ratio = 1.0;
+    if (payout_ratio < 0.2)
+        payout_ratio = 0.2; // æœ€ä½20%å¯ä»¥èµ”ä»˜ï¼ˆç¤ºä¾‹ï¼‰
+    if (payout_ratio > 1.0)
+        payout_ratio = 1.0;
 
     double payout = payout_base * payout_ratio;
     return payout;
 }
 
+/* ---------- ä¿å•ä¸ç†èµ”ç®¡ç†å®ç° ---------- */
 
-/* ---------- ±£µ¥ÓëÀíÅâ¹ÜÀíÊµÏÖ ---------- */
-
-/* ²éÕÒ±£µ¥Ë÷Òı */
-static int find_policy_index(const AppContext* ctx, const char* policy_id) {
-    if (!ctx || !policy_id) return -1;
-    for (int i = 0; i < ctx->policy_count; ++i) {
-        if (strcmp(ctx->policies[i].policy_id, policy_id) == 0) return i;
+/* å†…éƒ¨æŸ¥æ‰¾å·¥å…·ï¼šè¿”å›ä¿å•æ•°ç»„ä¸‹æ ‡ï¼Œæœªæ‰¾åˆ°è¿”å› -1ã€‚ */
+static int find_policy_index(const AppContext *ctx, const char *policy_id)
+{
+    if (!ctx || !policy_id)
+        return -1;
+    for (int i = 0; i < ctx->policy_count; ++i)
+    {
+        if (strcmp(ctx->policies[i].policy_id, policy_id) == 0)
+            return i;
     }
     return -1;
 }
 
-/* ²éÕÒÀíÅâË÷Òı */
-static int find_claim_index(const AppContext* ctx, const char* claim_id) {
-    if (!ctx || !claim_id) return -1;
-    for (int i = 0; i < ctx->claim_count; ++i) {
-        if (strcmp(ctx->claims[i].claim_id, claim_id) == 0) return i;
+/* å†…éƒ¨æŸ¥æ‰¾å·¥å…·ï¼šè¿”å›ç†èµ”æ•°ç»„ä¸‹æ ‡ï¼Œæœªæ‰¾åˆ°è¿”å› -1ã€‚ */
+static int find_claim_index(const AppContext *ctx, const char *claim_id)
+{
+    if (!ctx || !claim_id)
+        return -1;
+    for (int i = 0; i < ctx->claim_count; ++i)
+    {
+        if (strcmp(ctx->claims[i].claim_id, claim_id) == 0)
+            return i;
     }
     return -1;
 }
 
-/* Ìí¼Ó±£µ¥£º
-   - ĞèÒª¹ØÁªÒÑ´æÔÚ³µÁ¾£¨¸ù¾İ plate ²éÕÒ£©
-   - ×Ô¶¯ÉèÖÃ coverage_limit£¨Ê¾Àı£º¹º³µ¼ÛµÄ 80%£©ºÍ premium£¨µ÷ÓÃ calculate_premium_for_car£©
-*/
-int add_policy(AppContext* ctx, const char* policy_id, const char* plate, const char* owner, const char* coverage_desc) {
-    if (!ctx || !policy_id || !plate || !owner) return -1;
-    if (ctx->policy_count >= MAX_POLICIES) return -1;
-    if (find_policy_index(ctx, policy_id) != -1) return -1; // ÒÑ´æÔÚ
+/* åˆ é™¤ä¸€ä¸ªç†èµ”æ•°ç»„å…ƒç´ ï¼Œå¹¶æŠŠåç»­å…ƒç´ å·¦ç§»å¡«è¡¥ç©ºä½ã€‚ */
+static void remove_claim_at(AppContext *ctx, int index)
+{
+    int i;
 
-    Car* car = find_car(ctx, plate);
-    if (!car) return -1; // ³µÅÆ±ØĞë´æÔÚ
-
-    Policy* p = &ctx->policies[ctx->policy_count];
-    strncpy(p->policy_id, policy_id, sizeof(p->policy_id) - 1);
-    p->policy_id[sizeof(p->policy_id) - 1] = '\0';
-    strncpy(p->plate, plate, sizeof(p->plate) - 1);
-    p->plate[sizeof(p->plate) - 1] = '\0';
-    strncpy(p->owner, owner, sizeof(p->owner) - 1);
-    p->owner[sizeof(p->owner) - 1] = '\0';
-    p->active = 1;
-
-    // coverage_limit£ºÊ¾ÀıÊ¹ÓÃ¹º³µ¼ÛµÄ 80%
-    double limit = car->purchase_price * 0.8;
-    if (limit <= 0.0) limit = 5000.0; // Ä¬ÈÏ±£¶î
-    p->coverage_limit = limit;
-
-    // premium£º»ùÓÚ³µÁ¾¼ÆËã³öµÄ½¨ÒéÄê±£·Ñ
-    p->premium = calculate_premium_for_car(car);
-
-    // ÉèÖÃÉúĞ§/Ê§Ğ§ÈÕÆÚÎª 0£¨¿ÉÓÉµ÷ÓÃ·½ĞŞ¸Ä£©
-    p->start_date.year = p->start_date.month = p->start_date.day = 0;
-    p->end_date.year = p->end_date.month = p->end_date.day = 0;
-
-    if (coverage_desc) {
-        strncpy(p->coverage_desc, coverage_desc, sizeof(p->coverage_desc) - 1);
-        p->coverage_desc[sizeof(p->coverage_desc) - 1] = '\0';
-    } else {
-        p->coverage_desc[0] = '\0';
-    }
-
-    ctx->policy_count++;
-    return 0;
+    for (i = index; i < ctx->claim_count - 1; ++i)
+        ctx->claims[i] = ctx->claims[i + 1];
+    --ctx->claim_count;
+    memset(&ctx->claims[ctx->claim_count], 0, sizeof(ctx->claims[0]));
 }
 
-/* É¾³ı±£µ¥£¨°´±£µ¥ºÅ£© */
-int remove_policy(AppContext* ctx, const char* policy_id) {
-    if (!ctx || !policy_id) return -1;
-    int idx = find_policy_index(ctx, policy_id);
-    if (idx == -1) return -1;
-    for (int i = idx; i < ctx->policy_count - 1; ++i) {
+/* åˆ é™¤ä¿å•å‰å…ˆåˆ é™¤æ‰€æœ‰å¼•ç”¨è¯¥ä¿å•å·çš„ç†èµ”ï¼Œç»´æŒæ•°æ®å…³è”å®Œæ•´æ€§ã€‚ */
+static void remove_policy_at(AppContext *ctx, int index)
+{
+    int i;
+
+    for (i = 0; i < ctx->claim_count;)
+    {
+        if (strcmp(ctx->claims[i].policy_id, ctx->policies[index].policy_id) == 0)
+            remove_claim_at(ctx, i);
+        else
+            ++i;
+    }
+
+    for (i = index; i < ctx->policy_count - 1; ++i)
         ctx->policies[i] = ctx->policies[i + 1];
-    }
-    // ÇåÀíÎ²²¿
-    ctx->policies[ctx->policy_count - 1].policy_id[0] = '\0';
-    ctx->policies[ctx->policy_count - 1].plate[0] = '\0';
-    ctx->policies[ctx->policy_count - 1].owner[0] = '\0';
-    ctx->policies[ctx->policy_count - 1].active = 0;
-    ctx->policies[ctx->policy_count - 1].coverage_limit = 0.0;
-    ctx->policies[ctx->policy_count - 1].premium = 0.0;
-    ctx->policy_count--;
-    return 0;
+    --ctx->policy_count;
+    memset(&ctx->policies[ctx->policy_count], 0, sizeof(ctx->policies[0]));
 }
 
-/* ²éÕÒ±£µ¥Ö¸Õë */
-Policy* find_policy(AppContext* ctx, const char* policy_id) {
-    if (!ctx || !policy_id) return NULL;
+/*
+ * æ·»åŠ ä¿å•çš„åº•å±‚å®ç°ã€‚terms æŠŠäº§å“è¯´æ˜ã€æ—¥æœŸã€ä¿é¢æ¯”ä¾‹å’Œä¿è´¹å€æ•°ä½œä¸ºä¸€ç»„å‚æ•°ä¼ å…¥ï¼›
+ * å‡½æ•°ä¼šæ ¡éªŒé‡å¤ä¿å•å·ã€å…³è”è½¦è¾†å’Œæ—¥æœŸèŒƒå›´ï¼Œç„¶åè®¡ç®—ä¿é¢ä¸ä¿è´¹ã€‚
+ */
+static int add_policy(AppContext *ctx, const char *policy_id, const char *plate, const char *owner,
+                      const PolicyTerms *terms)
+{
+    Car *car;
+    Policy *policy;
+    double limit;
+
+    if (!ctx || !validate_string_len(policy_id, (int)sizeof(ctx->policies[0].policy_id)) ||
+        !validate_plate(plate) ||
+        !validate_string_len(owner, (int)sizeof(ctx->policies[0].owner)) || !terms ||
+        !validate_string_len(terms->description, (int)sizeof(ctx->policies[0].coverage_desc)) ||
+        !date_is_valid(&terms->start_date) || !date_is_valid(&terms->end_date) ||
+        date_compare(&terms->start_date, &terms->end_date) > 0 || terms->coverage_ratio <= 0.0 ||
+        terms->premium_multiplier <= 0.0)
+        return 0;
+    if (ctx->policy_count >= MAX_POLICIES || find_policy_index(ctx, policy_id) != -1)
+        return 0;
+
+    car = find_car(ctx, plate);
+    if (!car)
+        return 0;
+
+    policy = &ctx->policies[ctx->policy_count];
+    memset(policy, 0, sizeof(*policy));
+    copy_text(policy->policy_id, sizeof(policy->policy_id), policy_id);
+    copy_text(policy->plate, sizeof(policy->plate), plate);
+    copy_text(policy->owner, sizeof(policy->owner), owner);
+    copy_text(policy->coverage_desc, sizeof(policy->coverage_desc), terms->description);
+    policy->start_date = terms->start_date;
+    policy->end_date = terms->end_date;
+
+    limit = car->purchase_price * terms->coverage_ratio;
+    policy->coverage_limit = limit > 0.0 ? limit : 5000.0;
+    policy->premium = calculate_premium_for_car(car) * terms->premium_multiplier;
+    {
+        Date today = date_today();
+        policy->active = date_compare(&policy->start_date, &today) <= 0 &&
+                         date_compare(&policy->end_date, &today) >= 0;
+    }
+
+    ++ctx->policy_count;
+    return 1;
+}
+
+/*
+ * æŒ‰ä¿å•å·åˆ é™¤ã€‚remove_policy_at ä¼šå…ˆåˆ é™¤å…³è”ç†èµ”ï¼Œå†å‰ç§»ä¿å•æ•°ç»„å…ƒç´ ã€‚
+ * æ­¤åº•å±‚å‡½æ•°ä¸åˆ¤æ–­å½“å‰ç”¨æˆ·ï¼Œæƒé™ç”±åŒ…è£…å‡½æ•°è´Ÿè´£ã€‚
+ */
+static int remove_policy(AppContext *ctx, const char *policy_id)
+{
+    if (!ctx || !policy_id)
+        return 0;
     int idx = find_policy_index(ctx, policy_id);
-    if (idx == -1) return NULL;
+    if (idx == -1)
+        return 0;
+    remove_policy_at(ctx, idx);
+    return 1;
+}
+
+/* è¿”å› AppContext æ•°ç»„å†…éƒ¨çš„ä¿å•åœ°å€ï¼›æœªæ‰¾åˆ°è¿”å› NULLï¼Œä¸éœ€è¦ freeã€‚ */
+static Policy *find_policy(AppContext *ctx, const char *policy_id)
+{
+    if (!ctx || !policy_id)
+        return NULL;
+    int idx = find_policy_index(ctx, policy_id);
+    if (idx == -1)
+        return NULL;
     return &ctx->policies[idx];
 }
 
-/* ĞŞ¸Ä±£µ¥£¨Ê¾Àı£ºĞŞ¸ÄÃèÊö¡¢ÆğÊ¼/½áÊøÈÕÆÚÓëĞÂµÄ±£¶îÉÏÏŞ£© */
-int modify_policy(AppContext* ctx, const char* policy_id, const char* new_desc, Date new_start, Date new_end, double new_limit) {
-    if (!ctx || !policy_id) return -1;
-    Policy* p = find_policy(ctx, policy_id);
-    if (!p) return -1;
-    if (new_desc) {
-        strncpy(p->coverage_desc, new_desc, sizeof(p->coverage_desc) - 1);
-        p->coverage_desc[sizeof(p->coverage_desc) - 1] = '\0';
-    }
-    p->start_date = new_start;
-    p->end_date = new_end;
-    if (new_limit > 0.0) p->coverage_limit = new_limit;
-    return 0;
-}
+/*
+ * æ·»åŠ ç†èµ”ï¼šæ£€æŸ¥ä¿å•å’Œè½¦è¾†å…³è”ï¼Œè®¡ç®— approved_amountï¼Œå¹¶å°†åˆå§‹çŠ¶æ€
+ * è®¾ä¸º CLAIM_PENDINGã€‚è¿™ä¸ªé‡‘é¢æ˜¯æŒ‰ä¸šåŠ¡å…¬å¼è®¡ç®—çš„å»ºè®®å€¼ï¼Œä»éœ€ç®¡ç†å‘˜å®¡æ ¸ã€‚
+ */
+static int add_claim(AppContext *ctx, const char *claim_id, const char *policy_id,
+                     const char *claimant, const char *description, double request_amount)
+{
+    if (!ctx || !validate_string_len(claim_id, (int)sizeof(ctx->claims[0].claim_id)) ||
+        !validate_string_len(policy_id, (int)sizeof(ctx->claims[0].policy_id)) ||
+        !validate_string_len(claimant, (int)sizeof(ctx->claims[0].claimant)) ||
+        !validate_string_len(description, (int)sizeof(ctx->claims[0].description)) ||
+        request_amount <= 0.0 || request_amount > 1e9)
+        return 0;
+    if (ctx->claim_count >= MAX_CLAIMS)
+        return 0;
+    if (find_claim_index(ctx, claim_id) != -1)
+        return 0;
 
-/* Ìí¼ÓÀíÅâ£º
-   - ¼ì²é±£µ¥´æÔÚÇÒ¼¤»î
-   - ¹ØÁª³µÁ¾´æÔÚ
-   - ¼ÆËã approved_amount£¨µ«²»×Ô¶¯Ö§¸¶£©
-*/
-int add_claim(AppContext* ctx, const char* claim_id, const char* policy_id, const char* claimant, const char* description, double request_amount) {
-    if (!ctx || !claim_id || !policy_id || !claimant || !description) return -1;
-    if (ctx->claim_count >= MAX_CLAIMS) return -1;
-    if (find_claim_index(ctx, claim_id) != -1) return -1; // ÒÑÓĞÍ¬ÃûÀíÅâµ¥
+    Policy *p = find_policy(ctx, policy_id);
+    if (!p || !p->active)
+        return 0;
 
-    Policy* p = find_policy(ctx, policy_id);
-    if (!p || !p->active) return -1; // ±£µ¥²»´æÔÚ»òÎŞĞ§
+    Car *car = find_car(ctx, p->plate);
+    if (!car)
+        return 0;
 
-    Car* car = find_car(ctx, p->plate);
-    if (!car) return -1;
-
-    Claim* c = &ctx->claims[ctx->claim_count];
-    strncpy(c->claim_id, claim_id, sizeof(c->claim_id) - 1);
-    c->claim_id[sizeof(c->claim_id) - 1] = '\0';
-    strncpy(c->policy_id, policy_id, sizeof(c->policy_id) - 1);
-    c->policy_id[sizeof(c->policy_id) - 1] = '\0';
-    strncpy(c->plate, p->plate, sizeof(c->plate) - 1);
-    c->plate[sizeof(c->plate) - 1] = '\0';
-    strncpy(c->claimant, claimant, sizeof(c->claimant) - 1);
-    c->claimant[sizeof(c->claimant) - 1] = '\0';
-    strncpy(c->description, description, sizeof(c->description) - 1);
-    c->description[sizeof(c->description) - 1] = '\0';
+    Claim *c = &ctx->claims[ctx->claim_count];
+    memset(c, 0, sizeof(*c));
+    copy_text(c->claim_id, sizeof(c->claim_id), claim_id);
+    copy_text(c->policy_id, sizeof(c->policy_id), policy_id);
+    copy_text(c->plate, sizeof(c->plate), p->plate);
+    copy_text(c->claimant, sizeof(c->claimant), claimant);
+    copy_text(c->description, sizeof(c->description), description);
 
     c->request_amount = request_amount;
     c->approved_amount = calculate_payout_for_claim(p, car, request_amount);
-    c->status = CLAIM_PENDING;  /* ĞÂÌá½»µÄÀíÅâµ¥Ä¬ÈÏÎª´ıÉóºË */
-    c->claim_date.year = c->claim_date.month = c->claim_date.day = 0;
+    c->status = CLAIM_PENDING;
+    c->claim_date = date_today();
 
     ctx->claim_count++;
-    return 0;
+    return 1;
 }
 
-/* ²éÕÒÀíÅâÖ¸Õë */
-Claim* find_claim(AppContext* ctx, const char* claim_id) {
-    if (!ctx || !claim_id) return NULL;
+/* è¿”å›æ•°ç»„å†…éƒ¨ç†èµ”å¯¹è±¡çš„åœ°å€ï¼›æœªæ‰¾åˆ°è¿”å› NULLã€‚ */
+static Claim *find_claim(AppContext *ctx, const char *claim_id)
+{
+    if (!ctx || !claim_id)
+        return NULL;
     int idx = find_claim_index(ctx, claim_id);
-    if (idx == -1) return NULL;
+    if (idx == -1)
+        return NULL;
     return &ctx->claims[idx];
 }
 
-/* ÉóºËÀíÅâ£¨¹ÜÀíÔ±£©£ºapprove=1 ÉóºËÍ¨¹ı£¬approve=0 ÉóºË²µ»Ø */
-int review_claim(AppContext* ctx, const char* claim_id, int approve) {
-    if (!ctx || !claim_id) return -1;
-    int idx = find_claim_index(ctx, claim_id);
-    if (idx == -1) return -1;
-    if (ctx->claims[idx].status != CLAIM_PENDING) return -1; /* Ö»ÓĞ´ıÉóºËµÄµ¥×Ó²ÅÄÜÉóºË */
-    ctx->claims[idx].status = approve ? CLAIM_APPROVED : CLAIM_REJECTED;
-    return 0;
+/* åªæœ‰å¾…å®¡æ ¸ç†èµ”å¯ä»¥è¿›å…¥â€œå·²é€šè¿‡â€æˆ–â€œå·²é©³å›â€çŠ¶æ€ã€‚ */
+static int review_claim(AppContext *ctx, const char *claim_id, int approve)
+{
+    Claim *claim = find_claim(ctx, claim_id);
+
+    if (!claim || claim->status != CLAIM_PENDING)
+        return 0;
+    claim->status = approve ? CLAIM_APPROVED : CLAIM_REJECTED;
+    return 1;
 }
 
-/* ½á°¸ÀíÅâ£¨¹ÜÀíÔ±£©£º½ö¶ÔÉóºËÍ¨¹ıµÄÀíÅâµ¥½á°¸£¬±ê¼ÇÎªÒÑ½á°¸ */
-int settle_claim(AppContext* ctx, const char* claim_id) {
-    if (!ctx || !claim_id) return -1;
-    int idx = find_claim_index(ctx, claim_id);
-    if (idx == -1) return -1;
-    if (ctx->claims[idx].status != CLAIM_APPROVED) return -1; /* Ö»ÓĞÉóºËÍ¨¹ıµÄµ¥×Ó²ÅÄÜ½á°¸ */
-    ctx->claims[idx].status = CLAIM_SETTLED;
-    // ÕâÀï¿ÉÒÔ¼ÇÂ¼Êµ¼ÊÖ§¸¶½ğ¶î¡¢Ê±¼äµÈ¡£Ê¾Àı½ö×öÂß¼­±ê¼Ç¡£
-    return 0;
+/*
+ * ç»“æ¡ˆç†èµ”ï¼šåªæœ‰å·²å®¡æ ¸é€šè¿‡çš„ç†èµ”å¯ä»¥ç»“æ¡ˆã€‚è¿™é‡Œåªä¿®æ”¹ä¸šåŠ¡çŠ¶æ€ï¼Œ
+ * å¹¶ä¸çœŸçš„å‘èµ·èµ„é‡‘è½¬è´¦ã€‚
+ */
+static int settle_claim(AppContext *ctx, const char *claim_id)
+{
+    Claim *claim = find_claim(ctx, claim_id);
+
+    if (!claim || claim->status != CLAIM_APPROVED)
+        return 0;
+    claim->status = CLAIM_SETTLED;
+    return 1;
 }
 
-/* ÁĞ³ö±£µ¥£¨±ãÓÚµ÷ÊÔ£© */
-void list_policies(const AppContext* ctx) {
-    if (!ctx) return;
-    if (ctx->policy_count == 0) {
-        printf("Ã»ÓĞ±£µ¥¼ÇÂ¼¡£\n");
-        return;
-    }
-    printf("ĞòºÅ  ±£µ¥ºÅ       ³µÅÆ     Í¶±£ÈË      ±£¶î(Ôª)    Äê±£·Ñ(Ôª)  ×´Ì¬  ÃèÊö\n");
-    printf("-----------------------------------------------------------------------------\n");
-    for (int i = 0; i < ctx->policy_count; ++i) {
-        const Policy* p = &ctx->policies[i];
-        printf("%-4d  %-12s  %-8s  %-10s  %-10.2f  %-10.2f  %-4s  %s\n",
-               i+1, p->policy_id, p->plate, p->owner, p->coverage_limit, p->premium,
-               p->active ? "ÔÚ±£" : "Ê§Ğ§", p->coverage_desc);
-    }
-}
-
-/* ÀíÅâ×´Ì¬×ªÖĞÎÄÎÄ±¾ */
-static const char* claim_status_text(int status) {
-    switch (status) {
-    case CLAIM_APPROVED: return "ÒÑÍ¨¹ı";
-    case CLAIM_SETTLED:  return "ÒÑ½á°¸";
-    case CLAIM_REJECTED: return "ÒÑ²µ»Ø";
-    default:             return "´ıÉóºË";
-    }
-}
-
-/* ÁĞ³öÀíÅâ£¨±ãÓÚµ÷ÊÔ£© */
-void list_claims(const AppContext* ctx) {
-    if (!ctx) return;
-    if (ctx->claim_count == 0) {
-        printf("Ã»ÓĞÀíÅâ¼ÇÂ¼¡£\n");
-        return;
-    }
-    printf("ĞòºÅ  ÀíÅâºÅ       ±£µ¥ºÅ       ³µÅÆ     ÉêÇë(Ôª)  Åú×¼(Ôª)  ×´Ì¬  ÉêÇëÈË  ÃèÊö\n");
-    printf("-----------------------------------------------------------------------------\n");
-    for (int i = 0; i < ctx->claim_count; ++i) {
-        const Claim* c = &ctx->claims[i];
-        printf("%-4d  %-12s  %-12s  %-8s  %-8.2f  %-8.2f  %-8s  %-8s  %s\n",
-               i+1, c->claim_id, c->policy_id, c->plate,
-               c->request_amount, c->approved_amount,
-               claim_status_text(c->status), c->claimant, c->description);
-    }
-}
-
-
-
-/* ================= µ±Ç°ÓÃ»§¿É¼ûĞÔÓëÈ¨ÏŞ¿ØÖÆ ================= */
-/* ÊÕ¼¯µ±Ç°ÓÃ»§¿É¼ûµÄ±£µ¥ÏÂ±ê */
-int collect_visible_policy_indices(const AppContext* ctx, int* indices, int max_count)
+/* ================= å½“å‰ç”¨æˆ·å¯è§æ€§ä¸æƒé™æ§åˆ¶ ================= */
+/*
+ * æ”¶é›†å¯è§ä¿å•ä¸‹æ ‡ã€‚ç®¡ç†å‘˜å¯è§å…¨éƒ¨ï¼›æ™®é€šç”¨æˆ·åªè§ owner ç­‰äºè‡ªå·±çš„ä¿å•ã€‚
+ * count < max_count åŒæ—¶ä¿æŠ¤è°ƒç”¨è€…çš„ indices æ•°ç»„ä¸è¢«å†™è¶Šç•Œã€‚
+ */
+int collect_visible_policy_indices(const AppContext *ctx, int *indices, int max_count)
 {
     int i, count = 0;
 
     if (!ctx || !indices || max_count <= 0)
         return 0;
 
-    for (i = 0; i < ctx->policy_count && count < max_count; i++) {
+    for (i = 0; i < ctx->policy_count && count < max_count; i++)
+    {
         if (app_is_admin(ctx) || strcmp(ctx->policies[i].owner, ctx->current_user) == 0)
             indices[count++] = i;
     }
 
     return count;
 }
-/* ÊÕ¼¯µ±Ç°ÓÃ»§¿É¼ûµÄÀíÅâÏÂ±ê */
-int collect_visible_claim_indices(const AppContext* ctx, int* indices, int max_count)
+/* æ”¶é›†å¯è§ç†èµ”ä¸‹æ ‡ï¼›æ™®é€šç”¨æˆ·ä¾æ® claimant å­—æ®µè¿‡æ»¤ã€‚ */
+int collect_visible_claim_indices(const AppContext *ctx, int *indices, int max_count)
 {
     int i, count = 0;
 
     if (!ctx || !indices || max_count <= 0)
         return 0;
 
-    for (i = 0; i < ctx->claim_count && count < max_count; i++) {
+    for (i = 0; i < ctx->claim_count && count < max_count; i++)
+    {
         if (app_is_admin(ctx) || strcmp(ctx->claims[i].claimant, ctx->current_user) == 0)
             indices[count++] = i;
     }
 
     return count;
 }
-/* ÔÚµ±Ç°ÓÃ»§¿É¼û·¶Î§ÄÚ²éÕÒ±£µ¥ */
-const Policy* find_visible_policy(const AppContext* ctx, const char* policy_id)
+/* æƒé™æ„ŸçŸ¥çš„ä¿å•æŸ¥æ‰¾ï¼šå­˜åœ¨ä½†æ— æƒé™æ—¶ä¹Ÿè¿”å› NULLã€‚ */
+const Policy *find_visible_policy(const AppContext *ctx, const char *policy_id)
 {
     int i;
 
     if (!ctx || !policy_id)
         return NULL;
 
-    for (i = 0; i < ctx->policy_count; i++) {
-        if (strcmp(ctx->policies[i].policy_id, policy_id) == 0) {
+    for (i = 0; i < ctx->policy_count; i++)
+    {
+        if (strcmp(ctx->policies[i].policy_id, policy_id) == 0)
+        {
             if (app_is_admin(ctx) || strcmp(ctx->policies[i].owner, ctx->current_user) == 0)
                 return &ctx->policies[i];
             return NULL;
@@ -431,33 +449,35 @@ const Policy* find_visible_policy(const AppContext* ctx, const char* policy_id)
 
     return NULL;
 }
-/* ÔÚµ±Ç°ÓÃ»§¿É¼û·¶Î§ÄÚ²éÕÒÀíÅâ */
-const Claim* find_visible_claim(const AppContext* ctx, const char* claim_id)
+
+/* æƒé™æ„ŸçŸ¥çš„ç†èµ”æŸ¥æ‰¾ï¼šç®¡ç†å‘˜å¯æŸ¥å…¨éƒ¨ï¼Œæ™®é€šç”¨æˆ·åªèƒ½æŸ¥æœ¬äººç†èµ”ã€‚ */
+const Claim *find_visible_claim(const AppContext *ctx, const char *claim_id)
 {
     int i;
 
     if (!ctx || !claim_id)
         return NULL;
-
-    for (i = 0; i < ctx->claim_count; i++) {
-        if (strcmp(ctx->claims[i].claim_id, claim_id) == 0) {
-            if (app_is_admin(ctx) || strcmp(ctx->claims[i].claimant, ctx->current_user) == 0)
-                return &ctx->claims[i];
-            return NULL;
-        }
+    for (i = 0; i < ctx->claim_count; ++i)
+    {
+        if (strcmp(ctx->claims[i].claim_id, claim_id) != 0)
+            continue;
+        if (app_is_admin(ctx) || strcmp(ctx->claims[i].claimant, ctx->current_user) == 0)
+            return &ctx->claims[i];
+        return NULL;
     }
-
     return NULL;
 }
-/* ÒÔµ±Ç°ÓÃ»§Éí·İÌí¼Ó±£µ¥ */
-int add_policy_for_current_user(AppContext* ctx, const char* policy_id,
-    const char* plate, const char* requested_owner,
-    const char* coverage_desc)
+/*
+ * å®‰å…¨æ·»åŠ ä¿å•ã€‚ç®¡ç†å‘˜æŒ‡å®šçš„ owner å¿…é¡»å­˜åœ¨ä¸”ä¸è½¦è¾†æ‰€æœ‰è€…ä¸€è‡´ï¼›æ™®é€šç”¨æˆ·
+ * åªèƒ½ä¸ºè‡ªå·±çš„è½¦è¾†æŠ•ä¿ã€‚åº•å±‚å’ŒåŒ…è£…å±‚éƒ½ä½¿ç”¨ 1=æˆåŠŸã€0=å¤±è´¥ã€‚
+ */
+int add_policy_for_current_user(AppContext *ctx, const char *policy_id, const char *plate,
+                                const char *requested_owner, const PolicyTerms *terms)
 {
-    Car* car;
+    Car *car;
     char owner[20];
 
-    if (!ctx || !policy_id || !plate || !coverage_desc)
+    if (!ctx || !policy_id || !plate || !terms)
         return 0;
 
     if (!app_is_logged_in(ctx))
@@ -467,26 +487,28 @@ int add_policy_for_current_user(AppContext* ctx, const char* policy_id,
     if (!car)
         return 0;
 
-    if (app_is_admin(ctx)) {
+    if (app_is_admin(ctx))
+    {
         if (!requested_owner || !user_exists(ctx, requested_owner))
             return 0;
         if (strcmp(requested_owner, car->owner) != 0)
             return 0;
-        strcpy(owner, requested_owner);
+        copy_text(owner, sizeof(owner), requested_owner);
     }
-    else {
+    else
+    {
         if (strcmp(car->owner, ctx->current_user) != 0)
             return 0;
-        strcpy(owner, ctx->current_user);
+        copy_text(owner, sizeof(owner), ctx->current_user);
     }
 
-    return add_policy(ctx, policy_id, plate, owner, coverage_desc) == 0;
+    return add_policy(ctx, policy_id, plate, owner, terms);
 }
 
-/* ÒÔµ±Ç°ÓÃ»§Éí·İÉ¾³ı±£µ¥ */
-int remove_policy_for_current_user(AppContext* ctx, const char* policy_id)
+/* å®‰å…¨åˆ é™¤ä¿å•ï¼šç™»å½•ã€å­˜åœ¨æ€§å’Œæ‰€æœ‰æƒæ£€æŸ¥å…¨éƒ¨é€šè¿‡åæ‰è°ƒç”¨åº•å±‚åˆ é™¤ã€‚ */
+int remove_policy_for_current_user(AppContext *ctx, const char *policy_id)
 {
-    Policy* policy;
+    Policy *policy;
 
     if (!ctx || !policy_id)
         return 0;
@@ -501,14 +523,17 @@ int remove_policy_for_current_user(AppContext* ctx, const char* policy_id)
     if (!app_is_admin(ctx) && strcmp(policy->owner, ctx->current_user) != 0)
         return 0;
 
-    return remove_policy(ctx, policy_id) == 0;
+    return remove_policy(ctx, policy_id);
 }
-/* ÒÔµ±Ç°ÓÃ»§Éí·İÌá½»ÀíÅâ */
-int add_claim_for_current_user(AppContext* ctx, const char* claim_id,
-    const char* policy_id, const char* requested_claimant,
-    const char* description, double request_amount)
+/*
+ * å®‰å…¨æäº¤ç†èµ”ã€‚æ™®é€šç”¨æˆ·åªèƒ½é’ˆå¯¹è‡ªå·±çš„ä¿å•ç”³è¯·ï¼›ç®¡ç†å‘˜å¯ä»£å·²å­˜åœ¨ç”¨æˆ·
+ * æäº¤ã€‚çœŸæ­£çš„å…³è”æ£€æŸ¥å’Œæ‰¹å‡†é‡‘é¢è®¡ç®—ç”± add_claim å®Œæˆã€‚
+ */
+int add_claim_for_current_user(AppContext *ctx, const char *claim_id, const char *policy_id,
+                               const char *requested_claimant, const char *description,
+                               double request_amount)
 {
-    Policy* policy;
+    Policy *policy;
     char claimant[20];
 
     if (!ctx || !claim_id || !policy_id || !description)
@@ -521,38 +546,83 @@ int add_claim_for_current_user(AppContext* ctx, const char* claim_id,
     if (!policy)
         return 0;
 
-    if (app_is_admin(ctx)) {
+    if (app_is_admin(ctx))
+    {
         if (!requested_claimant || !user_exists(ctx, requested_claimant))
             return 0;
-        strcpy(claimant, requested_claimant);
+        copy_text(claimant, sizeof(claimant), requested_claimant);
     }
-    else {
+    else
+    {
         if (strcmp(policy->owner, ctx->current_user) != 0)
             return 0;
-        strcpy(claimant, ctx->current_user);
+        copy_text(claimant, sizeof(claimant), ctx->current_user);
     }
 
-    return add_claim(ctx, claim_id, policy_id, claimant, description, request_amount) == 0;
+    return add_claim(ctx, claim_id, policy_id, claimant, description, request_amount);
 }
-/* ÒÔµ±Ç°ÓÃ»§Éí·İÉóºËÀíÅâ£¨½ö¹ÜÀíÔ±£© */
-int review_claim_for_current_user(AppContext* ctx, const char* claim_id, int approve)
+/* å®‰å…¨å®¡æ ¸ï¼šåªæœ‰ç®¡ç†å‘˜å¯ä»¥å®¡æ ¸ï¼Œåº•å±‚å‡½æ•°è¿˜ä¼šé˜»æ­¢é‡å¤å®¡æ ¸ã€‚ */
+int review_claim_for_current_user(AppContext *ctx, const char *claim_id, int approve)
 {
-    if (!ctx || !claim_id)
+    if (!ctx || !claim_id || !app_is_admin(ctx))
+        return 0;
+    return review_claim(ctx, claim_id, approve);
+}
+
+/* å®‰å…¨ç»“æ¡ˆï¼šåªæœ‰ç®¡ç†å‘˜å¯ä»¥æŠŠå·²å®¡æ ¸é€šè¿‡çš„ç†èµ”è®¾ä¸ºå·²ç»“æ¡ˆã€‚ */
+int settle_claim_for_current_user(AppContext *ctx, const char *claim_id)
+{
+    if (!ctx || !claim_id || !app_is_admin(ctx))
+        return 0;
+    return settle_claim(ctx, claim_id);
+}
+
+/* åˆ é™¤æŸè¾†è½¦çš„æ‰€æœ‰ç†èµ”å’Œä¿å•ï¼Œä¾›è½¦è¾†æ¨¡å—ç»´æŠ¤å…³è”å®Œæ•´æ€§ã€‚ */
+int remove_insurance_for_plate(AppContext *ctx, const char *plate)
+{
+    int i;
+
+    if (!ctx || !plate)
         return 0;
 
-    if (!app_is_admin(ctx))
-        return 0; /* Ö»ÓĞ¹ÜÀíÔ±¿ÉÒÔÉóºË */
-
-    return review_claim(ctx, claim_id, approve) == 0;
+    for (i = 0; i < ctx->claim_count;)
+    {
+        if (strcmp(ctx->claims[i].plate, plate) == 0)
+            remove_claim_at(ctx, i);
+        else
+            ++i;
+    }
+    for (i = 0; i < ctx->policy_count;)
+    {
+        if (strcmp(ctx->policies[i].plate, plate) == 0)
+            remove_policy_at(ctx, i);
+        else
+            ++i;
+    }
+    return 1;
 }
-/* ÒÔµ±Ç°ÓÃ»§Éí·İ½á°¸ÀíÅâ£¨½ö¹ÜÀíÔ±£© */
-int settle_claim_for_current_user(AppContext* ctx, const char* claim_id)
+
+/* æ¸…ç†æŒ‡å®šç”¨æˆ·æ‹¥æœ‰/æäº¤çš„å‰©ä½™ä¿é™©è®°å½•ï¼Œä¾›ç”¨æˆ·çº§è”åˆ é™¤ä½¿ç”¨ã€‚ */
+int remove_insurance_for_user(AppContext *ctx, const char *username)
 {
-    if (!ctx || !claim_id)
+    int i;
+
+    if (!ctx || !username)
         return 0;
 
-    if (!app_is_admin(ctx))
-        return 0; /* Ö»ÓĞ¹ÜÀíÔ±¿ÉÒÔ½á°¸ÀíÅâ */
-
-    return settle_claim(ctx, claim_id) == 0;
+    for (i = 0; i < ctx->policy_count;)
+    {
+        if (strcmp(ctx->policies[i].owner, username) == 0)
+            remove_policy_at(ctx, i);
+        else
+            ++i;
+    }
+    for (i = 0; i < ctx->claim_count;)
+    {
+        if (strcmp(ctx->claims[i].claimant, username) == 0)
+            remove_claim_at(ctx, i);
+        else
+            ++i;
+    }
+    return 1;
 }

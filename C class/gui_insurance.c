@@ -1,32 +1,74 @@
-#define _CRT_SECURE_NO_WARNINGS
+ï»¿#define _CRT_SECURE_NO_WARNINGS
 #include "gui_internal.h"
 
-static const wchar_t* PRODUCT_NAMES_WIDE[] = { L"½»Ç¿ÏÕ", L"³µËğÏÕ", L"ÈıÕßÏÕ" };
-static const double PRODUCT_COVERAGE_RATIO[] = { 0.30, 0.80, 1.00 };
-static const double PRODUCT_PREMIUM_MULT[] = { 0.8, 1.2, 1.5 };
-static const int PRODUCT_COUNT = 3;
+/*
+ * gui_insurance.c â€”â€” ä¿å•ä¸ç†èµ”é¡µé¢
+ *
+ * é¡µé¢åŒæ—¶ç®¡ç†ä¸¤ç±»åˆ—è¡¨ï¼Œé€šè¿‡
+ * state->insurance_view å†³å®šå½“å‰æ˜¾ç¤ºå“ªä¸€ç§ã€‚
+ *
+ * æœ¬æ–‡ä»¶æ”¶é›†è¾“å…¥å’Œæ›´æ–°ç•Œé¢ï¼›ä¿é™©å…³è”æ ¡éªŒã€æƒé™å’Œé‡‘é¢è®¡ç®—ç”± insurance.c
 
-static void format_policy_line(const Policy* policy, wchar_t* line, size_t count)
+ * å®Œæˆï¼›æˆåŠŸåå†è°ƒç”¨ storage.c çš„ä¿å­˜å‡½æ•°æŒä¹…åŒ–ã€‚
+ */
+
+/* ä¸€ç§äº§å“çš„ä¸‰ä¸ªç›¸å…³å±æ€§æ”¾è¿›åŒä¸€ä¸ªç»“æ„ä½“ï¼Œé¿å…å¹³è¡Œæ•°ç»„ä¸‹æ ‡é”™ä½ã€‚ */
+typedef struct InsuranceProduct
+{
+    const wchar_t *name;
+    double coverage_ratio;
+    double premium_multiplier;
+} InsuranceProduct;
+
+static const InsuranceProduct INSURANCE_PRODUCTS[] = {
+    {L"äº¤å¼ºé™©", 0.30, 0.8}, {L"è½¦æŸé™©", 0.80, 1.2}, {L"ä¸‰è€…é™©", 1.00, 1.5}};
+
+#define PRODUCT_COUNT ((int)(sizeof(INSURANCE_PRODUCTS) / sizeof(INSURANCE_PRODUCTS[0])))
+
+/* ä¿é™©é¡µæŒ‰é’®åªå®šä¹‰ä¸€æ¬¡ï¼Œç»˜åˆ¶å’Œå‘½ä¸­æ£€æµ‹å…±åŒä½¿ç”¨ã€‚ */
+static const Button INSURANCE_BUTTONS[] = {{{20, 120, 200, 160}, L"æ·»åŠ ä¿å•", INS_ADD_POLICY},
+                                           {{20, 172, 200, 212}, L"åˆ é™¤ä¿å•", INS_DELETE_POLICY},
+                                           {{20, 224, 200, 264}, L"æŸ¥è¯¢ä¿å•", INS_FIND_POLICY},
+                                           {{20, 276, 200, 316}, L"ä¿å•åˆ—è¡¨", INS_LIST_POLICIES},
+                                           {{20, 328, 200, 368}, L"æ–°å¢ç†èµ”", INS_ADD_CLAIM},
+                                           {{20, 380, 200, 420}, L"ç†èµ”åˆ—è¡¨", INS_LIST_CLAIMS},
+                                           {{20, 432, 200, 472}, L"å®¡æ ¸ç†èµ”", INS_REVIEW_CLAIM},
+                                           {{20, 484, 200, 524}, L"ç»“æ¡ˆç†èµ”", INS_SETTLE_CLAIM},
+                                           {{20, 536, 95, 576}, L"ä¸Šä¸€é¡µ", INS_PREV},
+                                           {{125, 536, 200, 576}, L"ä¸‹ä¸€é¡µ", INS_NEXT},
+                                           {{20, 588, 200, 628}, L"è¿”å›", INS_BACK}};
+
+/* æŠŠä¸€ä¸ªä¿å•è½¬æ¢æˆè¡¨æ ¼å®½å­—ç¬¦ä¸²ï¼›?: æ ¹æ®å¸ƒå°”çŠ¶æ€é€‰æ‹©æ˜¾ç¤ºæ–‡å­—ã€‚ */
+static void format_policy_line(const Policy *policy, wchar_t *line, size_t count)
 {
     wchar_t policy_id[40], plate[32], owner[64], desc[96];
     char_to_wchar(policy->policy_id, policy_id, 40);
     char_to_wchar(policy->plate, plate, 32);
     char_to_wchar(policy->owner, owner, 64);
     char_to_wchar(policy->coverage_desc, desc, 96);
-    _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-8s %-10s %.2f %.2f %-8s %s", policy_id, plate, owner, policy->coverage_limit, policy->premium, policy->active ? L"ÓĞĞ§" : L"Ê§Ğ§", desc);
+    _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-8s %-10s %.2f %.2f %-8s %s", policy_id, plate,
+                 owner, policy->coverage_limit, policy->premium, policy->active ? L"æœ‰æ•ˆ" : L"å¤±æ•ˆ",
+                 desc);
 }
 
-static const wchar_t* claim_status_text_wide(int status)
+/* å°†æ•°å€¼çŠ¶æ€è½¬æ¢ä¸ºç»™ç”¨æˆ·é˜…è¯»çš„ä¸­æ–‡æ–‡æœ¬ã€‚ */
+static const wchar_t *claim_status_text(int status)
 {
-    switch (status) {
-    case CLAIM_APPROVED: return L"ÒÑÍ¨¹ı";
-    case CLAIM_SETTLED:  return L"ÒÑ½á°¸";
-    case CLAIM_REJECTED: return L"ÒÑ²µ»Ø";
-    default:             return L"´ıÉóºË";
+    switch (status)
+    {
+    case CLAIM_APPROVED:
+        return L"å·²é€šè¿‡";
+    case CLAIM_SETTLED:
+        return L"å·²ç»“æ¡ˆ";
+    case CLAIM_REJECTED:
+        return L"å·²é©³å›";
+    default:
+        return L"å¾…å®¡æ ¸";
     }
 }
 
-static void format_claim_line(const Claim* claim, wchar_t* line, size_t count)
+/* æŠŠä¸€ä¸ªç†èµ”è®°å½•è½¬æ¢æˆè¡¨æ ¼å®½å­—ç¬¦ä¸²ã€‚ */
+static void format_claim_line(const Claim *claim, wchar_t *line, size_t count)
 {
     wchar_t claim_id[40], policy_id[40], plate[32], claimant[64], desc[96];
     char_to_wchar(claim->claim_id, claim_id, 40);
@@ -34,44 +76,89 @@ static void format_claim_line(const Claim* claim, wchar_t* line, size_t count)
     char_to_wchar(claim->plate, plate, 32);
     char_to_wchar(claim->claimant, claimant, 64);
     char_to_wchar(claim->description, desc, 96);
-    _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-10s %-8s %-10s %.2f %.2f %-8s %s", claim_id, policy_id, plate, claimant, claim->request_amount, claim->approved_amount, claim_status_text_wide(claim->status), desc);
+    _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-10s %-8s %-10s %.2f %.2f %-8s %s", claim_id,
+                 policy_id, plate, claimant, claim->request_amount, claim->approved_amount,
+                 claim_status_text(claim->status), desc);
 }
 
-void draw_insurance(const AppContext* ctx, const GuiState* state, const Button* buttons, int count)
+/*
+ * ç»˜åˆ¶å½“å‰ä¿é™©è§†å›¾ã€‚å…ˆå–å¾—ç”¨æˆ·å¯è§æ•°æ®çš„åŸæ•°ç»„ä¸‹æ ‡ï¼Œå†æŒ‰é¡µå¡«å…… bufferï¼Œ
+ * lines åªä¿å­˜å„è¡Œç¼“å†²åŒºåœ°å€ï¼Œæœ€åç»Ÿä¸€äº¤ç»™ draw_rowsã€‚
+ */
+void draw_insurance(const AppContext *ctx, const GuiState *state)
 {
     int i;
+    int button_count = (int)(sizeof(INSURANCE_BUTTONS) / sizeof(INSURANCE_BUTTONS[0]));
 
-    /* ÔÚ½øÈë±£µ¥½çÃæÇ°¸üĞÂ±£µ¥×´Ì¬£¬×Ô¶¯¹ıÆÚ */
-    update_policy_active_status((AppContext*)ctx);
-
-    draw_title(L"±£µ¥ÓëÀíÅâ¹ÜÀí");
+    draw_title(L"ä¿å•ä¸ç†èµ”ç®¡ç†");
     draw_status(ctx);
     draw_message_box(state);
-    for (i = 0; i < count; ++i) draw_button(&buttons[i]);
+    for (i = 0; i < button_count; ++i)
+        draw_button(&INSURANCE_BUTTONS[i]);
     draw_content_panel();
 
-    if (state->insurance_view == VIEW_POLICY_LIST) {
-        draw_table_header(L"±£µ¥ºÅ    ³µÅÆ    Í¶±£ÈË      ±£¶î     ±£·Ñ   ×´Ì¬   ÃèÊö");
-        const wchar_t* lines[PAGE_SIZE] = { 0 };
-        wchar_t buffer[PAGE_SIZE][256] = { 0 };
-        int indices[MAX_POLICIES] = { 0 };
+    if (state->insurance_view == VIEW_POLICY_LIST)
+    {
+        draw_table_header(L"ä¿å•å·    è½¦ç‰Œ    æŠ•ä¿äºº      ä¿é¢     ä¿è´¹   çŠ¶æ€   æè¿°");
+        const wchar_t *lines[PAGE_SIZE] = {0};
+        wchar_t buffer[PAGE_SIZE][256] = {0};
+        int indices[MAX_POLICIES] = {0};
         int total = collect_visible_policy_indices(ctx, indices, MAX_POLICIES);
-        int page = state->policy_page;
-        if (total == 0) { wcsncpy_s(buffer[0], 256, L"ÎŞ±£µ¥¼ÇÂ¼", _TRUNCATE); lines[0] = buffer[0]; draw_rows(lines, 1); draw_footer_page(0, 0); return; }
-        int total_pages = (total + PAGE_SIZE - 1) / PAGE_SIZE; if (page >= total_pages) page = total_pages - 1; if (page < 0) page = 0; int start = page * PAGE_SIZE; int end = start + PAGE_SIZE; if (end > total) end = total; int row_count = 0; for (i = start; i < end; ++i) { const Policy* p = &ctx->policies[indices[i]]; format_policy_line(p, buffer[row_count], 256); lines[row_count] = buffer[row_count]; row_count++; } draw_rows(lines, row_count); draw_footer_page(page, total);
-    } else {
-        draw_table_header(L"ÀíÅâºÅ    ±£µ¥ºÅ    ³µÅÆ    ÉêÇëÈË    ÉêÇë(Ôª)  Åú×¼(Ôª)  ×´Ì¬   ÃèÊö");
-        const wchar_t* lines[PAGE_SIZE] = { 0 };
-        wchar_t buffer[PAGE_SIZE][256] = { 0 };
-        int indices[MAX_CLAIMS] = { 0 };
+        PageRange page = make_page_range(state->policy_page, total);
+        int row_count = 0;
+        if (total == 0)
+        {
+            wcsncpy_s(buffer[0], 256, L"æ— ä¿å•è®°å½•", _TRUNCATE);
+            lines[0] = buffer[0];
+            draw_rows(lines, 1);
+            draw_footer_page(0, 0);
+            return;
+        }
+        for (i = page.start; i < page.end; ++i)
+        {
+            const Policy *policy = &ctx->policies[indices[i]];
+            format_policy_line(policy, buffer[row_count], 256);
+            lines[row_count] = buffer[row_count];
+            ++row_count;
+        }
+        draw_rows(lines, row_count);
+        draw_footer_page(page.page, total);
+    }
+    else
+    {
+        draw_table_header(L"ç†èµ”å·    ä¿å•å·    è½¦ç‰Œ    ç”³è¯·äºº    ç”³è¯·(å…ƒ)  æ‰¹å‡†(å…ƒ)  çŠ¶æ€   æè¿°");
+        const wchar_t *lines[PAGE_SIZE] = {0};
+        wchar_t buffer[PAGE_SIZE][256] = {0};
+        int indices[MAX_CLAIMS] = {0};
         int total = collect_visible_claim_indices(ctx, indices, MAX_CLAIMS);
-        int page = state->claim_page;
-        if (total == 0) { wcsncpy_s(buffer[0], 256, L"ÎŞÀíÅâ¼ÇÂ¼", _TRUNCATE); lines[0] = buffer[0]; draw_rows(lines, 1); draw_footer_page(0, 0); return; }
-        int total_pages = (total + PAGE_SIZE - 1) / PAGE_SIZE; if (page >= total_pages) page = total_pages - 1; if (page < 0) page = 0; int start = page * PAGE_SIZE; int end = start + PAGE_SIZE; if (end > total) end = total; int row_count = 0; for (i = start; i < end; ++i) { const Claim* c = &ctx->claims[indices[i]]; format_claim_line(c, buffer[row_count], 256); lines[row_count] = buffer[row_count]; row_count++; } draw_rows(lines, row_count); draw_footer_page(page, total);
+        PageRange page = make_page_range(state->claim_page, total);
+        int row_count = 0;
+        if (total == 0)
+        {
+            wcsncpy_s(buffer[0], 256, L"æ— ç†èµ”è®°å½•", _TRUNCATE);
+            lines[0] = buffer[0];
+            draw_rows(lines, 1);
+            draw_footer_page(0, 0);
+            return;
+        }
+        for (i = page.start; i < page.end; ++i)
+        {
+            const Claim *claim = &ctx->claims[indices[i]];
+            format_claim_line(claim, buffer[row_count], 256);
+            lines[row_count] = buffer[row_count];
+            ++row_count;
+        }
+        draw_rows(lines, row_count);
+        draw_footer_page(page.page, total);
     }
 }
 
-static int prompt_product_choice(const wchar_t* title, int default_choice)
+/*
+ * æ¨¡æ€äº§å“é€‰æ‹©å™¨ã€‚å†…éƒ¨ while(1) ç­‰å¾…é¼ æ ‡ç‚¹å‡»ï¼›äº§å“æŒ‰é’® id ä¸º 1~3ï¼Œå–æ¶ˆ
+ *
+ * id ä¸º 0ï¼Œå› æ­¤è¿”å›å€¼æ—¢èƒ½è¡¨ç¤ºé€‰æ‹©ç»“æœï¼Œä¹Ÿèƒ½è¡¨ç¤ºå–æ¶ˆã€‚
+ */
+static int prompt_product_choice(const wchar_t *title, int default_choice)
 {
     // dialog dimensions inside content panel
     int dialog_w = 520;
@@ -88,13 +175,13 @@ static int prompt_product_choice(const wchar_t* title, int default_choice)
     // title
     settextstyle(22, 0, L"Segoe UI");
     settextcolor(RGB(35, 40, 50));
-    RECT title_rect = { dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48 };
+    RECT title_rect = {dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48};
     draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
     // description
     settextstyle(18, 0, L"Segoe UI");
-    RECT desc_rect = { dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84 };
-    draw_text_rect(L"ÇëÑ¡Ôñ±£ÏÕ²úÆ·£º", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    RECT desc_rect = {dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84};
+    draw_text_rect(L"è¯·é€‰æ‹©ä¿é™©äº§å“ï¼š", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
     // buttons: product buttons + cancel
     int total_btn = PRODUCT_COUNT + 1; // last = cancel
@@ -106,12 +193,13 @@ static int prompt_product_choice(const wchar_t* title, int default_choice)
     int btn_y = dlg_bottom - btn_h - 20;
 
     Button btns[8]; // enough space (PRODUCT_COUNT small)
-    for (int i = 0; i < PRODUCT_COUNT; ++i) {
+    for (int i = 0; i < PRODUCT_COUNT; ++i)
+    {
         btns[i].rect.left = start_x + i * (btn_w + spacing);
         btns[i].rect.top = btn_y;
         btns[i].rect.right = btns[i].rect.left + btn_w;
         btns[i].rect.bottom = btn_y + btn_h;
-        btns[i].label = PRODUCT_NAMES_WIDE[i];
+        btns[i].label = INSURANCE_PRODUCTS[i].name;
         btns[i].id = i + 1;
         draw_button(&btns[i]);
     }
@@ -121,44 +209,54 @@ static int prompt_product_choice(const wchar_t* title, int default_choice)
     btns[ci].rect.top = btn_y;
     btns[ci].rect.right = btns[ci].rect.left + btn_w;
     btns[ci].rect.bottom = btn_y + btn_h;
-    btns[ci].label = L"È¡Ïû";
+    btns[ci].label = L"å–æ¶ˆ";
     btns[ci].id = 0;
     draw_button(&btns[ci]);
 
-    // CHANGED: ¸ßÁÁÏÔÊ¾Ä¬ÈÏÑ¡Ïî
-    if (default_choice > 0 && default_choice <= PRODUCT_COUNT) {
+    // é«˜äº®é»˜è®¤äº§å“ï¼Œå¸®åŠ©ç”¨æˆ·ç¡®è®¤å½“å‰é€‰æ‹©ã€‚
+    if (default_choice > 0 && default_choice <= PRODUCT_COUNT)
+    {
         setfillcolor(RGB(230, 245, 255));
         setlinecolor(RGB(100, 140, 180));
-        solidrectangle(btns[default_choice - 1].rect.left, btns[default_choice - 1].rect.top, btns[default_choice - 1].rect.right, btns[default_choice - 1].rect.bottom);
+        solidrectangle(btns[default_choice - 1].rect.left, btns[default_choice - 1].rect.top,
+                       btns[default_choice - 1].rect.right, btns[default_choice - 1].rect.bottom);
         settextcolor(RGB(20, 60, 100));
         settextstyle(18, 0, L"Segoe UI");
-        draw_text_rect(btns[default_choice - 1].label, btns[default_choice - 1].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        draw_text_rect(btns[default_choice - 1].label, btns[default_choice - 1].rect,
+                       DT_CENTER | DT_VCENTER | DT_SINGLELINE);
     }
 
     FlushBatchDraw();
 
     // wait for click
     ExMessage msg;
-    while (1) {
-        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN) {
+    while (1)
+    {
+        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN)
+        {
             int mx = msg.x;
             int my = msg.y;
-            for (int i = 0; i < total_btn; ++i) {
-                if (point_in_rect(mx, my, &btns[i].rect)) {
+            for (int i = 0; i < total_btn; ++i)
+            {
+                if (point_in_rect(mx, my, &btns[i].rect))
+                {
                     // small visual feedback: redraw pressed button (optional)
                     setlinecolor(RGB(80, 90, 110));
                     setfillcolor(RGB(220, 230, 240));
-                    solidrectangle(btns[i].rect.left, btns[i].rect.top, btns[i].rect.right, btns[i].rect.bottom);
+                    solidrectangle(btns[i].rect.left, btns[i].rect.top, btns[i].rect.right,
+                                   btns[i].rect.bottom);
                     settextcolor(RGB(35, 40, 50));
                     settextstyle(18, 0, L"Segoe UI");
-                    draw_text_rect(btns[i].label, btns[i].rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+                    draw_text_rect(btns[i].label, btns[i].rect,
+                                   DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                     FlushBatchDraw();
                     // consume event and return id
                     return btns[i].id;
                 }
             }
             // click outside: treat as cancel
-            if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom) {
+            if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom)
+            {
                 return 0;
             }
         }
@@ -166,139 +264,344 @@ static int prompt_product_choice(const wchar_t* title, int default_choice)
     }
 }
 
-static void handle_add_policy(AppContext* ctx, GuiState* state)
+/*
+ * æ–°å¢ä¿å•å®Œæ•´æµç¨‹ï¼šè¾“å…¥ç¼–å·ã€è½¦ç‰Œå’Œè½¦ä¸»ï¼Œé€‰æ‹©ä¿é™©äº§å“ä¸æœ‰æ•ˆæœŸï¼Œå†æŠŠè¿™äº›
+ * æ•°æ®ç»„åˆæˆ PolicyTermsã€‚ä¸šåŠ¡å±‚å®ŒæˆæŸ¥é‡ã€æƒé™æ ¡éªŒã€ä¿é¢å’Œä¿è´¹è®¡ç®—ï¼›
+ * GUI åªåœ¨æ“ä½œæˆåŠŸåä¿å­˜æ•°æ®å¹¶è®°å½•æ—¥å¿—ã€‚
+ */
+static void handle_add_policy(AppContext *ctx, GuiState *state)
 {
-    char policy_id[24] = {0}; char plate[10] = {0}; char owner[20] = {0};
-    if (!prompt_char_field(L"Ìí¼Ó±£µ¥", L"ÇëÊäÈë±£µ¥ºÅ£º", policy_id, sizeof(policy_id), "")) return;
-    if (!validate_string_len(policy_id, (int)sizeof(((Policy*)0)->policy_id))) { set_message(state, L"±£µ¥ºÅ³¤¶È²»ºÏ·¨"); return; }
-    if (find_policy(ctx, policy_id)) { set_message(state, L"±£µ¥ºÅÒÑ´æÔÚ"); return; }
-    if (!prompt_char_field(L"Ìí¼Ó±£µ¥", L"ÇëÊäÈëÍ¶±£³µÅÆ£º", plate, sizeof(plate), "")) return;
-    if (!validate_plate(plate)) { set_message(state, L"³µÅÆ¸ñÊ½²»ºÏ·¨"); return; }
-    Car* car = find_car(ctx, plate);
-    if (!car) { set_message(state, L"Î´ÕÒµ½¸Ã³µÅÆ"); return; }
-    if (is_admin(ctx)) {
-        if (!prompt_char_field(L"Ìí¼Ó±£µ¥", L"ÇëÊäÈëÍ¶±£ÈËÓÃ»§Ãû£º", owner, sizeof(owner), "")) return;
-        if (!validate_string_len(owner, (int)sizeof(((User*)0)->username)) || !user_exists(ctx, owner)) { set_message(state, L"Ö¸¶¨µÄÓÃ»§²»´æÔÚ»òÓÃ»§Ãû³¤¶È²»ºÏ·¨"); return; }
-    } else {
-        strncpy(owner, ctx->current_user, sizeof(owner)-1); owner[sizeof(owner)-1] = '\0';
+    char policy_id[24] = {0};
+    char plate[10] = {0};
+    char owner[20] = {0};
+    if (!prompt_char_field(L"æ·»åŠ ä¿å•", L"è¯·è¾“å…¥ä¿å•å·ï¼š", policy_id, sizeof(policy_id), ""))
+        return;
+    if (!validate_string_len(policy_id, (int)sizeof(((Policy *)0)->policy_id)))
+    {
+        set_message(state, L"ä¿å•å·é•¿åº¦ä¸åˆæ³•");
+        return;
     }
-    if (strcmp(owner, car->owner) != 0) { set_message(state, L"Í¶±£ÈË±ØĞëÎª³µÁ¾ËùÓĞÕß"); return; }
+    if (!prompt_char_field(L"æ·»åŠ ä¿å•", L"è¯·è¾“å…¥æŠ•ä¿è½¦ç‰Œï¼š", plate, sizeof(plate), ""))
+        return;
+    if (!validate_plate(plate))
+    {
+        set_message(state, L"è½¦ç‰Œæ ¼å¼ä¸åˆæ³•");
+        return;
+    }
+    Car *car = find_car(ctx, plate);
+    if (!car)
+    {
+        set_message(state, L"æœªæ‰¾åˆ°è¯¥è½¦ç‰Œ");
+        return;
+    }
+    if (app_is_admin(ctx))
+    {
+        if (!prompt_char_field(L"æ·»åŠ ä¿å•", L"è¯·è¾“å…¥æŠ•ä¿äººç”¨æˆ·åï¼š", owner, sizeof(owner), ""))
+            return;
+        if (!validate_string_len(owner, (int)sizeof(((User *)0)->username)) ||
+            !user_exists(ctx, owner))
+        {
+            set_message(state, L"æŒ‡å®šçš„ç”¨æˆ·ä¸å­˜åœ¨æˆ–ç”¨æˆ·åé•¿åº¦ä¸åˆæ³•");
+            return;
+        }
+    }
+    else
+    {
+        copy_text(owner, sizeof(owner), ctx->current_user);
+    }
+    if (strcmp(owner, car->owner) != 0)
+    {
+        set_message(state, L"æŠ•ä¿äººå¿…é¡»ä¸ºè½¦è¾†æ‰€æœ‰è€…");
+        return;
+    }
 
     // Use clickable product selection
-    int choice = prompt_product_choice(L"Ñ¡Ôñ±£ÏÕ²úÆ·", 1);
-    if (choice <= 0 || choice > PRODUCT_COUNT) { set_message(state, L"ÒÑÈ¡Ïû²úÆ·Ñ¡Ôñ"); return; }
+    int choice = prompt_product_choice(L"é€‰æ‹©ä¿é™©äº§å“", 1);
+    if (choice <= 0 || choice > PRODUCT_COUNT)
+    {
+        set_message(state, L"å·²å–æ¶ˆäº§å“é€‰æ‹©");
+        return;
+    }
 
-    Date start = today_local(); Date end = start; end.year = start.year + 1; if (!prompt_date_field(L"±£µ¥ÉúĞ§ÈÕ", &start, &start)) return; if (!prompt_date_field(L"±£µ¥Ê§Ğ§ÈÕ", &end, &end)) return; if (!validate_date(&start) || !validate_date(&end) || compare_date_local(&start, &end) > 0) { set_message(state, L"ÉúĞ§/Ê§Ğ§ÈÕÆÚ²»ºÏ·¨"); return; }
-    char product_desc[64] = {0}; wchar_to_char(PRODUCT_NAMES_WIDE[choice - 1], product_desc, sizeof(product_desc));
-    if (add_policy(ctx, policy_id, plate, owner, product_desc) == 0) {
-        Policy* p = find_policy(ctx, policy_id);
-        if (p) {
-            double ratio = PRODUCT_COVERAGE_RATIO[choice - 1];
-            double mult = PRODUCT_PREMIUM_MULT[choice - 1];
-            p->coverage_limit = car->purchase_price * ratio; if (p->coverage_limit <= 0.0) p->coverage_limit = 5000.0;
-            p->premium = calculate_premium_for_car(car) * mult; p->start_date = start; p->end_date = end;
-            Date now = today_local(); p->active = (compare_date_local(&p->start_date, &now) <= 0 && compare_date_local(&p->end_date, &now) >= 0) ? 1 : 0;
-            strncpy(p->coverage_desc, product_desc, sizeof(p->coverage_desc)-1); p->coverage_desc[sizeof(p->coverage_desc)-1] = '\0';
-            save_policies(ctx); append_operation_log(ctx, "ADD_POLICY", policy_id, product_desc); set_message(state, L"Ìí¼Ó±£µ¥³É¹¦"); state->insurance_view = VIEW_POLICY_LIST; state->policy_page = 0;
-        } else set_message(state, L"Ìí¼Ó±£µ¥Ê§°Ü£¨²éÕÒĞÂ±£µ¥Ê§°Ü£©");
-    } else set_message(state, L"Ìí¼Ó±£µ¥Ê§°Ü£¨¿ÉÄÜÒÑ´æÔÚ»ò´ïµ½ÉÏÏŞ£©");
+    Date start = date_today();
+    Date end = start;
+    end.year = start.year + 1;
+    if (!prompt_date_field(L"ä¿å•ç”Ÿæ•ˆæ—¥", &start, &start))
+        return;
+    if (!prompt_date_field(L"ä¿å•å¤±æ•ˆæ—¥", &end, &end))
+        return;
+    if (!date_is_valid(&start) || !date_is_valid(&end) || date_compare(&start, &end) > 0)
+    {
+        set_message(state, L"ç”Ÿæ•ˆ/å¤±æ•ˆæ—¥æœŸä¸åˆæ³•");
+        return;
+    }
+    char product_desc[64] = {0};
+    wchar_to_char(INSURANCE_PRODUCTS[choice - 1].name, product_desc, sizeof(product_desc));
+    PolicyTerms terms;
+    terms.description = product_desc;
+    terms.start_date = start;
+    terms.end_date = end;
+    terms.coverage_ratio = INSURANCE_PRODUCTS[choice - 1].coverage_ratio;
+    terms.premium_multiplier = INSURANCE_PRODUCTS[choice - 1].premium_multiplier;
+    if (add_policy_for_current_user(ctx, policy_id, plate, owner, &terms))
+    {
+        save_policies(ctx);
+        append_operation_log(ctx, "ADD_POLICY", policy_id, product_desc);
+        set_message(state, L"æ·»åŠ ä¿å•æˆåŠŸ");
+        state->insurance_view = VIEW_POLICY_LIST;
+        state->policy_page = 0;
+    }
+    else
+        set_message(state, L"æ·»åŠ ä¿å•å¤±è´¥ï¼ˆå¯èƒ½å·²å­˜åœ¨æˆ–è¾¾åˆ°ä¸Šé™ï¼‰");
 }
 
-static void handle_delete_policy(AppContext* ctx, GuiState* state)
+/* åˆ é™¤ä¿å•å‰æ£€æŸ¥å­˜åœ¨æ€§å’Œæ‰€æœ‰æƒï¼›ç®¡ç†å‘˜å¯ä»¥æ“ä½œä»»æ„ä¿å•ã€‚ */
+static void handle_delete_policy(AppContext *ctx, GuiState *state)
 {
-    char policy_id[24] = {0}; if (!prompt_char_field(L"É¾³ı±£µ¥", L"ÇëÊäÈë±£µ¥ºÅ£º", policy_id, sizeof(policy_id), "")) return; Policy* p = find_policy(ctx, policy_id); if (!p) { set_message(state, L"Î´ÕÒµ½¸Ã±£µ¥"); return; } if (!is_admin(ctx) && strcmp(p->owner, ctx->current_user) != 0) { set_message(state, L"Ö»ÄÜÉ¾³ıµ±Ç°ÓÃ»§Ïà¹ØµÄ±£µ¥"); return; } if (remove_policy(ctx, policy_id) == 0) { save_policies(ctx); append_operation_log(ctx, "DELETE_POLICY", policy_id, "deleted by user"); set_message(state, L"É¾³ı±£µ¥³É¹¦"); } else set_message(state, L"É¾³ı±£µ¥Ê§°Ü"); }
-
-static void handle_find_policy(AppContext* ctx, GuiState* state)
-{
-    char policy_id[24] = {0}; if (!prompt_char_field(L"²éÑ¯±£µ¥", L"ÇëÊäÈë±£µ¥ºÅ£º", policy_id, sizeof(policy_id), "")) return; const Policy* policy = find_visible_policy(ctx, policy_id); if (!policy) { set_message(state, L"Î´ÕÒµ½±£µ¥"); return; }
-    wchar_t id_t[40], plate_t[32], owner_t[64], desc_t[96], message[512]; char_to_wchar(policy->policy_id, id_t, 40); char_to_wchar(policy->plate, plate_t, 32); char_to_wchar(policy->owner, owner_t, 64); char_to_wchar(policy->coverage_desc, desc_t, 96); _snwprintf_s(message, 512, _TRUNCATE, L"±£µ¥:%s ³µÅÆ:%s Í¶±£ÈË:%s ±£¶î:%.2f ±£·Ñ:%.2f ×´Ì¬:%s ÃèÊö:%s", id_t, plate_t, owner_t, policy->coverage_limit, policy->premium, policy->active ? L"ÓĞĞ§" : L"Ê§Ğ§", desc_t); set_message(state, message);
+    char policy_id[24] = {0};
+    if (!prompt_char_field(L"åˆ é™¤ä¿å•", L"è¯·è¾“å…¥ä¿å•å·ï¼š", policy_id, sizeof(policy_id), ""))
+        return;
+    if (remove_policy_for_current_user(ctx, policy_id))
+    {
+        save_policies(ctx);
+        save_claims(ctx);
+        append_operation_log(ctx, "DELETE_POLICY", policy_id, "deleted by user");
+        set_message(state, L"åˆ é™¤ä¿å•æˆåŠŸ");
+    }
+    else
+        set_message(state, L"åˆ é™¤ä¿å•å¤±è´¥");
 }
 
-static void handle_add_claim(AppContext* ctx, GuiState* state)
+/* ä½¿ç”¨ find_visible_policy æŸ¥è¯¢ï¼Œæœªæˆæƒçš„è®°å½•ä¸ä¸å­˜åœ¨çš„è®°å½•éƒ½æ˜¾ç¤ºâ€œæœªæ‰¾åˆ°â€ã€‚ */
+static void handle_find_policy(AppContext *ctx, GuiState *state)
 {
-    char claim_id[24] = {0}, policy_id[24] = {0}, desc[256] = {0}, claimant[20] = {0}; double amount = 0.0;
-    if (!prompt_char_field(L"ĞÂÔöÀíÅâ", L"ÇëÊäÈëÀíÅâµ¥ºÅ£º", claim_id, sizeof(claim_id), "")) return; if (!validate_string_len(claim_id, (int)sizeof(((Claim*)0)->claim_id))) { set_message(state, L"ÀíÅâµ¥ºÅ³¤¶È²»ºÏ·¨"); return; }
-    if (!prompt_char_field(L"ĞÂÔöÀíÅâ", L"ÇëÊäÈë¹ØÁª±£µ¥ºÅ£º", policy_id, sizeof(policy_id), "")) return; if (!validate_string_len(policy_id, (int)sizeof(((Policy*)0)->policy_id))) { set_message(state, L"±£µ¥ºÅ¸ñÊ½²»ºÏ·¨"); return; }
-    if (!prompt_double_field(L"ĞÂÔöÀíÅâ", L"ÇëÊäÈëÉêÇë½ğ¶î£¨Ôª£©£º", &amount, 1000.0)) return; if (amount <= 0.0 || amount > 1e9) { set_message(state, L"ÉêÇë½ğ¶î²»ºÏ·¨£¨±ØĞë´óÓÚ0ÇÒĞ¡ÓÚ1e9£©"); return; }
-    if (!prompt_char_field(L"ĞÂÔöÀíÅâ", L"ÇëÊäÈëÀíÅâËµÃ÷£º", desc, sizeof(desc), "")) return; if (!validate_string_len(desc, (int)sizeof(((Claim*)0)->description))) { set_message(state, L"ÀíÅâËµÃ÷³¤¶È²»ºÏ·¨"); return; }
-    if (is_admin(ctx)) { if (!prompt_char_field(L"ĞÂÔöÀíÅâ", L"ÇëÊäÈëÉêÇëÈËÓÃ»§Ãû£º", claimant, sizeof(claimant), "")) return; if (!validate_string_len(claimant, (int)sizeof(((User*)0)->username)) || !user_exists(ctx, claimant)) { set_message(state, L"Ö¸¶¨µÄÓÃ»§²»´æÔÚ»òÓÃ»§Ãû³¤¶È²»ºÏ·¨"); return; } } else { strncpy(claimant, ctx->current_user, sizeof(claimant)-1); claimant[sizeof(claimant)-1] = '\0'; }
-    if (add_claim_for_current_user(ctx, claim_id, policy_id, claimant, desc, amount)) { save_claims(ctx); append_operation_log(ctx, "ADD_CLAIM", claim_id, desc); set_message(state, L"Ìá½»ÀíÅâ³É¹¦"); state->insurance_view = VIEW_CLAIM_LIST; state->claim_page = 0; } else set_message(state, L"Ìá½»ÀíÅâÊ§°Ü");
+    char policy_id[24] = {0};
+    if (!prompt_char_field(L"æŸ¥è¯¢ä¿å•", L"è¯·è¾“å…¥ä¿å•å·ï¼š", policy_id, sizeof(policy_id), ""))
+        return;
+    const Policy *policy = find_visible_policy(ctx, policy_id);
+    if (!policy)
+    {
+        set_message(state, L"æœªæ‰¾åˆ°ä¿å•");
+        return;
+    }
+    wchar_t id_t[40], plate_t[32], owner_t[64], desc_t[96], message[512];
+    char_to_wchar(policy->policy_id, id_t, 40);
+    char_to_wchar(policy->plate, plate_t, 32);
+    char_to_wchar(policy->owner, owner_t, 64);
+    char_to_wchar(policy->coverage_desc, desc_t, 96);
+    _snwprintf_s(message, 512, _TRUNCATE,
+                 L"ä¿å•:%s è½¦ç‰Œ:%s æŠ•ä¿äºº:%s ä¿é¢:%.2f ä¿è´¹:%.2f çŠ¶æ€:%s æè¿°:%s", id_t, plate_t,
+                 owner_t, policy->coverage_limit, policy->premium,
+                 policy->active ? L"æœ‰æ•ˆ" : L"å¤±æ•ˆ", desc_t);
+    set_message(state, message);
 }
 
-static void handle_review_claim(AppContext* ctx, GuiState* state)
+/* æ”¶é›†ç†èµ”èµ„æ–™å¹¶è°ƒç”¨æƒé™åŒ…è£…æ¥å£ï¼›æ‰¹å‡†é‡‘é¢ç”± insurance.c è‡ªåŠ¨è®¡ç®—ã€‚ */
+static void handle_add_claim(AppContext *ctx, GuiState *state)
+{
+    char claim_id[24] = {0}, policy_id[24] = {0}, desc[256] = {0}, claimant[20] = {0};
+    double amount = 0.0;
+    if (!prompt_char_field(L"æ–°å¢ç†èµ”", L"è¯·è¾“å…¥ç†èµ”å•å·ï¼š", claim_id, sizeof(claim_id), ""))
+        return;
+    if (!validate_string_len(claim_id, (int)sizeof(((Claim *)0)->claim_id)))
+    {
+        set_message(state, L"ç†èµ”å•å·é•¿åº¦ä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_char_field(L"æ–°å¢ç†èµ”", L"è¯·è¾“å…¥å…³è”ä¿å•å·ï¼š", policy_id, sizeof(policy_id), ""))
+        return;
+    if (!validate_string_len(policy_id, (int)sizeof(((Policy *)0)->policy_id)))
+    {
+        set_message(state, L"ä¿å•å·æ ¼å¼ä¸åˆæ³•");
+        return;
+    }
+    if (!prompt_double_field(L"æ–°å¢ç†èµ”", L"è¯·è¾“å…¥ç”³è¯·é‡‘é¢ï¼ˆå…ƒï¼‰ï¼š", &amount, 1000.0))
+        return;
+    if (amount <= 0.0 || amount > 1e9)
+    {
+        set_message(state, L"ç”³è¯·é‡‘é¢ä¸åˆæ³•ï¼ˆå¿…é¡»å¤§äº0ä¸”å°äº1e9ï¼‰");
+        return;
+    }
+    if (!prompt_char_field(L"æ–°å¢ç†èµ”", L"è¯·è¾“å…¥ç†èµ”è¯´æ˜ï¼š", desc, sizeof(desc), ""))
+        return;
+    if (!validate_string_len(desc, (int)sizeof(((Claim *)0)->description)))
+    {
+        set_message(state, L"ç†èµ”è¯´æ˜é•¿åº¦ä¸åˆæ³•");
+        return;
+    }
+    if (app_is_admin(ctx))
+    {
+        if (!prompt_char_field(L"æ–°å¢ç†èµ”", L"è¯·è¾“å…¥ç”³è¯·äººç”¨æˆ·åï¼š", claimant, sizeof(claimant),
+                               ""))
+            return;
+        if (!validate_string_len(claimant, (int)sizeof(((User *)0)->username)) ||
+            !user_exists(ctx, claimant))
+        {
+            set_message(state, L"æŒ‡å®šçš„ç”¨æˆ·ä¸å­˜åœ¨æˆ–ç”¨æˆ·åé•¿åº¦ä¸åˆæ³•");
+            return;
+        }
+    }
+    else
+    {
+        copy_text(claimant, sizeof(claimant), ctx->current_user);
+    }
+    if (add_claim_for_current_user(ctx, claim_id, policy_id, claimant, desc, amount))
+    {
+        save_claims(ctx);
+        append_operation_log(ctx, "ADD_CLAIM", claim_id, desc);
+        set_message(state, L"æäº¤ç†èµ”æˆåŠŸ");
+        state->insurance_view = VIEW_CLAIM_LIST;
+        state->claim_page = 0;
+    }
+    else
+        set_message(state, L"æäº¤ç†èµ”å¤±è´¥");
+}
+
+/* ç®¡ç†å‘˜å®¡æ ¸ä¸€æ¡å¾…å®¡æ ¸ç†èµ”ï¼Œ1 è¡¨ç¤ºé€šè¿‡ï¼Œ0 è¡¨ç¤ºé©³å›ã€‚ */
+static void handle_review_claim(AppContext *ctx, GuiState *state)
 {
     char claim_id[24] = {0};
     char choice[8] = {0};
-    if (!prompt_char_field(L"ÉóºËÀíÅâ", L"ÇëÊäÈëÀíÅâµ¥ºÅ£º", claim_id, sizeof(claim_id), "")) return;
-    if (!is_admin(ctx)) {
-        set_message(state, L"Ö»ÓĞ¹ÜÀíÔ±²ÅÄÜÉóºËÀíÅâ");
+    const Claim *claim;
+    int approve;
+
+    if (!prompt_char_field(L"å®¡æ ¸ç†èµ”", L"è¯·è¾“å…¥ç†èµ”å•å·ï¼š", claim_id, sizeof(claim_id), ""))
+        return;
+    if (!app_is_admin(ctx))
+    {
+        set_message(state, L"åªæœ‰ç®¡ç†å‘˜å¯ä»¥å®¡æ ¸ç†èµ”");
         return;
     }
-    Claim* c = find_claim(ctx, claim_id);
-    if (!c) {
-        set_message(state, L"Î´ÕÒµ½ÀíÅâµ¥");
+
+    claim = find_visible_claim(ctx, claim_id);
+    if (!claim)
+    {
+        set_message(state, L"æœªæ‰¾åˆ°è¯¥ç†èµ”å•");
         return;
     }
-    if (c->status != CLAIM_PENDING) {
-        set_message(state, L"¸ÃÀíÅâµ¥ÒÑÉóºË¹ı£¬ÎŞ·¨ÖØ¸´ÉóºË");
+    if (claim->status != CLAIM_PENDING)
+    {
+        set_message(state, L"è¯¥ç†èµ”å·²å®¡æ ¸ï¼Œä¸èƒ½é‡å¤å¤„ç†");
         return;
     }
-    if (!prompt_char_field(L"ÉóºËÀíÅâ", L"ÊäÈë 1=Í¨¹ı£¬0=²µ»Ø£º", choice, sizeof(choice), "1")) return;
-    int approve = (choice[0] == '1');
-    if (review_claim_for_current_user(ctx, claim_id, approve)) {
+    if (!prompt_char_field(L"å®¡æ ¸ç†èµ”", L"è¯·è¾“å…¥ 1=é€šè¿‡ï¼Œ0=é©³å›ï¼š", choice, sizeof(choice), "1"))
+        return;
+    if (choice[0] != '0' && choice[0] != '1')
+    {
+        set_message(state, L"è¯·åªè¾“å…¥ 1 æˆ– 0");
+        return;
+    }
+
+    approve = choice[0] == '1';
+    if (review_claim_for_current_user(ctx, claim_id, approve))
+    {
         save_claims(ctx);
         append_operation_log(ctx, "REVIEW_CLAIM", claim_id, approve ? "approved" : "rejected");
-        set_message(state, approve ? L"ÉóºËÍ¨¹ı£¬µÈ´ı½á°¸" : L"ÒÑ²µ»Ø¸ÃÀíÅâÉêÇë");
-    } else {
-        set_message(state, L"ÉóºË²Ù×÷Ê§°Ü");
+        set_message(state, approve ? L"å®¡æ ¸é€šè¿‡ï¼Œå¯ç»§ç»­ç»“æ¡ˆ" : L"ç†èµ”å·²é©³å›");
+    }
+    else
+    {
+        set_message(state, L"å®¡æ ¸ç†èµ”å¤±è´¥");
     }
 }
 
-static void handle_settle_claim(AppContext* ctx, GuiState* state)
+/* ç»“æ¡ˆåªä¿®æ”¹ç†èµ”çŠ¶æ€ï¼Œä¸æ‰§è¡ŒçœŸå®è½¬è´¦ï¼›æˆåŠŸåå…¨é‡ä¿å­˜ claims.txtã€‚ */
+static void handle_settle_claim(AppContext *ctx, GuiState *state)
 {
     char claim_id[24] = {0};
-    if (!prompt_char_field(L"½á°¸ÀíÅâ", L"ÇëÊäÈëÀíÅâµ¥ºÅ£º", claim_id, sizeof(claim_id), "")) return;
-    if (!is_admin(ctx)) {
-        set_message(state, L"Ö»ÓĞ¹ÜÀíÔ±²ÅÄÜ½á°¸ÀíÅâ");
+    const Claim *claim;
+
+    if (!prompt_char_field(L"ç»“æ¡ˆç†èµ”", L"è¯·è¾“å…¥ç†èµ”å•å·ï¼š", claim_id, sizeof(claim_id), ""))
+        return;
+    if (!app_is_admin(ctx))
+    {
+        set_message(state, L"åªæœ‰ç®¡ç†å‘˜å¯ä»¥ç»“æ¡ˆç†èµ”");
         return;
     }
-    Claim* c = find_claim(ctx, claim_id);
-    if (!c) {
-        set_message(state, L"Î´ÕÒµ½ÀíÅâµ¥");
+    claim = find_visible_claim(ctx, claim_id);
+    if (!claim)
+    {
+        set_message(state, L"æœªæ‰¾åˆ°è¯¥ç†èµ”å•");
         return;
     }
-    if (c->status != CLAIM_APPROVED) {
-        set_message(state, L"¸ÃÀíÅâµ¥ÉĞÎ´ÉóºËÍ¨¹ı£¬ÎŞ·¨½á°¸");
+    if (claim->status != CLAIM_APPROVED)
+    {
+        set_message(state, L"è¯¥ç†èµ”å°šæœªå®¡æ ¸é€šè¿‡ï¼Œä¸èƒ½ç»“æ¡ˆ");
         return;
     }
-    if (settle_claim_for_current_user(ctx, claim_id)) {
+    if (settle_claim_for_current_user(ctx, claim_id))
+    {
         save_claims(ctx);
         append_operation_log(ctx, "SETTLE_CLAIM", claim_id, "settled by admin");
-        set_message(state, L"ÀíÅâ½á°¸³É¹¦");
-    } else {
-        set_message(state, L"ÀíÅâ½á°¸Ê§°Ü");
+        set_message(state, L"ç†èµ”ç»“æ¡ˆæˆåŠŸ");
+    }
+    else
+    {
+        set_message(state, L"ç†èµ”ç»“æ¡ˆå¤±è´¥");
     }
 }
 
-void handle_insurance_action(AppContext* ctx, GuiState* state, int action)
+/*
+ * åˆ†æ´¾ InsuranceActionã€‚page æ˜¯ int*ï¼šæ ¹æ®å½“å‰è§†å›¾æŒ‡å‘ policy_page æˆ–
+ *
+ * claim_pageï¼Œä¹‹ååŒä¸€å¥—ç¿»é¡µä»£ç å¯ä¿®æ”¹æ­£ç¡®çš„é¡µç æˆå‘˜ã€‚
+ */
+void handle_insurance_action(AppContext *ctx, GuiState *state, int action)
 {
     int total = state->insurance_view == VIEW_POLICY_LIST ? ctx->policy_count : ctx->claim_count;
-    int* page = state->insurance_view == VIEW_POLICY_LIST ? &state->policy_page : &state->claim_page;
-    int total_pages = total == 0 ? 1 : (total + PAGE_SIZE - 1) / PAGE_SIZE;
-    switch (action) {
-    case INS_ADD_POLICY: handle_add_policy(ctx, state); break;
-    case INS_DELETE_POLICY: handle_delete_policy(ctx, state); break;
-    case INS_FIND_POLICY: handle_find_policy(ctx, state); break;
-    case INS_LIST_POLICIES: state->insurance_view = VIEW_POLICY_LIST; state->policy_page = 0; set_message(state, L"ÏÔÊ¾±£µ¥ÁĞ±í"); break;
-    case INS_ADD_CLAIM: handle_add_claim(ctx, state); break;
-    case INS_LIST_CLAIMS: state->insurance_view = VIEW_CLAIM_LIST; state->claim_page = 0; set_message(state, L"ÏÔÊ¾ÀíÅâÁĞ±í"); break;
-    case INS_REVIEW_CLAIM: handle_review_claim(ctx, state); break;
-    case INS_SETTLE_CLAIM: handle_settle_claim(ctx, state); break;
-    case INS_PREV: if (*page > 0) (*page)--; break;
-    case INS_NEXT: if (*page + 1 < total_pages) (*page)++; break;
-    case INS_BACK: state->screen = SCREEN_HOME; set_message(state, L"·µ»ØÖ÷½çÃæ"); break;
-    default: break;
+    int *page =
+        state->insurance_view == VIEW_POLICY_LIST ? &state->policy_page : &state->claim_page;
+    PageRange range = make_page_range(*page, total);
+    switch (action)
+    {
+    case INS_ADD_POLICY:
+        handle_add_policy(ctx, state);
+        break;
+    case INS_DELETE_POLICY:
+        handle_delete_policy(ctx, state);
+        break;
+    case INS_FIND_POLICY:
+        handle_find_policy(ctx, state);
+        break;
+    case INS_LIST_POLICIES:
+        state->insurance_view = VIEW_POLICY_LIST;
+        state->policy_page = 0;
+        set_message(state, L"æ˜¾ç¤ºä¿å•åˆ—è¡¨");
+        break;
+    case INS_ADD_CLAIM:
+        handle_add_claim(ctx, state);
+        break;
+    case INS_LIST_CLAIMS:
+        state->insurance_view = VIEW_CLAIM_LIST;
+        state->claim_page = 0;
+        set_message(state, L"æ˜¾ç¤ºç†èµ”åˆ—è¡¨");
+        break;
+    case INS_REVIEW_CLAIM:
+        handle_review_claim(ctx, state);
+        break;
+    case INS_SETTLE_CLAIM:
+        handle_settle_claim(ctx, state);
+        break;
+    case INS_PREV:
+        if (*page > 0)
+            (*page)--;
+        break;
+    case INS_NEXT:
+        if (*page + 1 < range.total_pages)
+            (*page)++;
+        break;
+    case INS_BACK:
+        state->screen = SCREEN_HOME;
+        set_message(state, L"è¿”å›ä¸»ç•Œé¢");
+        break;
+    default:
+        break;
     }
 }
 
-int hit_test_insurance(int x, int y) { Button buttons[] = { {{20, 120, 200, 160}, L"", INS_ADD_POLICY}, {{20, 172, 200, 212}, L"", INS_DELETE_POLICY}, {{20, 224, 200, 264}, L"", INS_FIND_POLICY}, {{20, 276, 200, 316}, L"", INS_LIST_POLICIES}, {{20, 328, 200, 368}, L"", INS_ADD_CLAIM}, {{20, 380, 200, 420}, L"", INS_LIST_CLAIMS}, {{20, 432, 200, 472}, L"", INS_REVIEW_CLAIM}, {{20, 484, 200, 524}, L"", INS_SETTLE_CLAIM}, {{20, 536, 95, 576}, L"", INS_PREV}, {{125, 536, 200, 576}, L"", INS_NEXT}, {{20, 588, 200, 628}, L"", INS_BACK} }; return hit_test_buttons(buttons, (int)(sizeof(buttons) / sizeof(buttons[0])), x, y); }
+/* ç”¨ä¸ç»˜åˆ¶é¡µé¢ç›¸åŒçš„çŸ©å½¢åˆ¤æ–­ç‚¹å‡»ï¼Œå¹¶è¿”å›å¯¹åº”æ“ä½œç¼–å·ã€‚ */
+int hit_test_insurance(int x, int y)
+{
+    return hit_test_buttons(INSURANCE_BUTTONS,
+                            (int)(sizeof(INSURANCE_BUTTONS) / sizeof(INSURANCE_BUTTONS[0])), x, y);
+}
