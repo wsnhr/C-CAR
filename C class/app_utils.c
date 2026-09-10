@@ -115,11 +115,10 @@ static int plate_char_is_valid(char value)
 }
 
 /*
- * 车牌必须非空、能放进 Car.plate，并且每个字符都是字母、数字或连字符。
- * sizeof(((Car *)0)->plate) 只在编译期询问 plate 数组大小，并不会真的访问
- * 空地址；这样即使以后修改 plate 容量，校验上限也会自动同步。
+ * 查找键采用宽松规则，以便旧版 cars.txt 中的车辆仍然可以被查找和删除。
+ * 它只保证字符串能放入数组，而且不包含空格或其他特殊字符。
  */
-int validate_plate(const char *plate)
+int validate_plate_key(const char *plate)
 {
     const char *current;
 
@@ -131,6 +130,59 @@ int validate_plate(const char *plate)
             return 0;
     }
     return 1;
+}
+
+/* 把 ASCII 小写字母转换为大写；数字和短横线保持不变。 */
+static char plate_char_to_upper(char value)
+{
+    if (value >= 'a' && value <= 'z')
+        return (char)(value - 'a' + 'A');
+    return value;
+}
+
+/*
+ * 标准化并验证新车牌。课程项目采用“地区字母-编号”的简化格式：
+ * 1. 第一个字符必须是字母，第二个字符必须是短横线；
+ * 2. 短横线后有 3~6 个字母或数字；
+ * 3. I 和 O 容易与数字 1、0 混淆，因此不允许使用；
+ * 4. 输入的小写字母统一转换为大写，避免大小写不同造成重复车牌。
+ */
+int normalize_plate(const char *plate, char *dest, size_t dest_capacity)
+{
+    size_t length;
+    size_t i;
+
+    if (!plate || !dest || dest_capacity == 0)
+        return 0;
+    dest[0] = '\0';
+    length = strlen(plate);
+    if (length < 5 || length > 8 || length >= dest_capacity ||
+        length >= sizeof(((Car *)0)->plate))
+        return 0;
+    if (!((plate[0] >= 'A' && plate[0] <= 'Z') ||
+          (plate[0] >= 'a' && plate[0] <= 'z')) ||
+        plate[1] != '-')
+        return 0;
+
+    for (i = 0; i < length; ++i)
+    {
+        char normalized = plate_char_to_upper(plate[i]);
+        if (i >= 2 && !((normalized >= 'A' && normalized <= 'Z') ||
+                        (normalized >= '0' && normalized <= '9')))
+            return 0;
+        if (normalized == 'I' || normalized == 'O')
+            return 0;
+        dest[i] = normalized;
+    }
+    dest[length] = '\0';
+    return 1;
+}
+
+/* 只关心是否合法时，用局部数组接收标准化结果即可。 */
+int validate_plate(const char *plate)
+{
+    char normalized[sizeof(((Car *)0)->plate)] = {0};
+    return normalize_plate(plate, normalized, sizeof(normalized));
 }
 
 /*

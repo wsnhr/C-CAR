@@ -65,6 +65,17 @@ typedef struct
     int day;   /* 1~当月最大天数 */
 } Date;
 
+/*
+ * 车辆类型使用枚举保存，而不是直接保存中文字符串。这样比较和传参更可靠，
+ * 写入文件时也只需要保存一个整数。三个值分别对应添加车辆时的三个选项。
+ */
+typedef enum
+{
+    VEHICLE_TYPE_MOTORCYCLE = 0, /* 摩托车 */
+    VEHICLE_TYPE_SMALL_CAR,      /* 小型车 */
+    VEHICLE_TYPE_LARGE_CAR       /* 大型车 */
+} VehicleType;
+
 /* 车辆通过 owner 用户名关联 User。 */
 typedef struct
 {
@@ -72,6 +83,7 @@ typedef struct
     char brand[20];           /* 品牌。 */
     char model[20];           /* 型号。 */
     char owner[20];           /* 对应 User.username。 */
+    VehicleType vehicle_type; /* 车辆类型：摩托车、小型车或大型车。 */
     ViolationLevel violation; /* 影响保险计算。 */
     Date purchase_date;       /* 购入日期。 */
     double purchase_price;    /* 购入价格。 */

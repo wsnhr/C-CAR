@@ -27,7 +27,7 @@ extern "C"
 
     /* 根据统一日期规则重新计算所有带合法日期的保单状态。 */
     void update_policy_active_status(AppContext *ctx);
-    /* 以下两个函数是无副作用的金额计算。 */
+    /* 以下两个函数从 Car 中读取车型、车龄、价格和违章等计算参数。 */
     double calculate_premium_for_car(const Car *car);
     double calculate_payout_for_claim(const Policy *policy, const Car *car, double request_amount);
 

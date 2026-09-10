@@ -129,6 +129,7 @@ int prompt_optional_char_field(const wchar_t *title, const wchar_t *prompt, char
 int prompt_double_field(const wchar_t *title, const wchar_t *prompt, double *value,
                         double default_value);
 int prompt_date_field(const wchar_t *title, Date *date, const Date *current);
+int prompt_vehicle_type_field(const wchar_t *title, VehicleType *type, VehicleType current);
 int prompt_violation_field(const wchar_t *title, ViolationLevel *level, ViolationLevel current);
 /*
  * 显示统一的 EasyX 确认框：确认返回 1，取消或点击框外返回 0。
@@ -137,6 +138,7 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
 int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
                         const wchar_t *confirm_label, int dangerous);
 const wchar_t *violation_to_text(ViolationLevel level);
+const wchar_t *vehicle_type_to_text(VehicleType type);
 int point_in_rect(int x, int y, const RECT *rect);
 void draw_text_rect(const wchar_t *text, RECT rect, UINT format);
 void draw_button(const Button *button);

@@ -4,6 +4,7 @@
 #include "insurance.h"
 #include "user.h"
 
+#include <ctype.h>
 #include <string.h>
 
 /*
@@ -34,11 +35,20 @@ void init_app(AppContext *ctx)
  */
 static int find_car_index(const AppContext *ctx, const char *plate)
 {
+    int i;
+
     if (!ctx || !plate)
         return -1;
-    for (int i = 0; i < ctx->car_count; ++i)
+    for (i = 0; i < ctx->car_count; ++i)
     {
-        if (strcmp(ctx->cars[i].plate, plate) == 0)
+        const unsigned char *left = (const unsigned char *)ctx->cars[i].plate;
+        const unsigned char *right = (const unsigned char *)plate;
+        while (*left && *right && toupper(*left) == toupper(*right))
+        {
+            ++left;
+            ++right;
+        }
+        if (*left == '\0' && *right == '\0')
             return i;
     }
     return -1;
@@ -64,27 +74,32 @@ Car *find_car(AppContext *ctx, const char *plate)
  * 先填充 cars[car_count] 这个空槽位，全部成功后才增加 car_count。
  */
 int add_car(AppContext *ctx, const char *plate, const char *brand, const char *model,
-            const char *owner, ViolationLevel violation, Date purchase_date, double purchase_price)
+            const char *owner, VehicleType vehicle_type, ViolationLevel violation,
+            Date purchase_date, double purchase_price)
 {
-    if (!ctx || !validate_plate(plate) ||
+    char normalized_plate[sizeof(ctx->cars[0].plate)] = {0};
+
+    if (!ctx || !normalize_plate(plate, normalized_plate, sizeof(normalized_plate)) ||
         !validate_string_len(brand, (int)sizeof(ctx->cars[0].brand)) ||
         !validate_string_len(model, (int)sizeof(ctx->cars[0].model)) ||
         !validate_string_len(owner, (int)sizeof(ctx->cars[0].owner)) ||
+        vehicle_type < VEHICLE_TYPE_MOTORCYCLE || vehicle_type > VEHICLE_TYPE_LARGE_CAR ||
         !date_is_valid(&purchase_date) || !validate_price_value(purchase_price))
         return 0;
     if (ctx->car_count >= MAX_CARS)
         return 0;
-    if (find_car_index(ctx, plate) != -1)
+    if (find_car_index(ctx, normalized_plate) != -1)
         return 0;
 
     /* c 是待填充元素的地址；-> 用于通过结构体指针访问成员。 */
     Car *c = &ctx->cars[ctx->car_count];
     /* copy_text 统一检查容量并保证字符串以 '\0' 结束。 */
-    copy_text(c->plate, sizeof(c->plate), plate);
+    copy_text(c->plate, sizeof(c->plate), normalized_plate);
     copy_text(c->brand, sizeof(c->brand), brand);
     copy_text(c->model, sizeof(c->model), model);
     copy_text(c->owner, sizeof(c->owner), owner);
 
+    c->vehicle_type = vehicle_type;
     c->violation = violation;
     c->purchase_date = purchase_date;
     c->purchase_price = purchase_price;
@@ -120,12 +135,14 @@ int remove_car(AppContext *ctx, const char *plate)
  * 违章和价格按值传入，会直接覆盖旧值。成功返回 1，失败返回 0。
  */
 int modify_car(AppContext *ctx, const char *plate, const char *new_brand, const char *new_model,
-               const char *new_owner, ViolationLevel new_violation, Date new_purchase_date,
-               double new_purchase_price)
+               const char *new_owner, VehicleType new_vehicle_type,
+               ViolationLevel new_violation, Date new_purchase_date, double new_purchase_price)
 {
     if (!ctx || !plate || !new_brand || !new_model ||
         !validate_string_len(new_brand, (int)sizeof(ctx->cars[0].brand)) ||
         !validate_string_len(new_model, (int)sizeof(ctx->cars[0].model)) ||
+        new_vehicle_type < VEHICLE_TYPE_MOTORCYCLE ||
+        new_vehicle_type > VEHICLE_TYPE_LARGE_CAR ||
         !date_is_valid(&new_purchase_date) || !validate_price_value(new_purchase_price))
         return 0;
     Car *c = find_car(ctx, plate);
@@ -145,6 +162,7 @@ int modify_car(AppContext *ctx, const char *plate, const char *new_brand, const 
             return 0;
         copy_text(c->owner, sizeof(c->owner), new_owner);
     }
+    c->vehicle_type = new_vehicle_type;
     c->violation = new_violation;
     c->purchase_date = new_purchase_date;
     c->purchase_price = new_purchase_price;
@@ -182,6 +200,9 @@ static int car_matches_condition(const Car *car, const CarSearchCondition *condi
     if (!text_contains_keyword(car->model, condition->model_keyword))
         return 0;
     if (!text_contains_keyword(car->owner, condition->owner_keyword))
+        return 0;
+    if (condition->vehicle_type != CAR_VEHICLE_TYPE_ANY &&
+        (int)car->vehicle_type != condition->vehicle_type)
         return 0;
     if (condition->violation != CAR_VIOLATION_ANY &&
         (int)car->violation != condition->violation)
@@ -331,7 +352,8 @@ const Car *find_visible_car(const AppContext *ctx, const char *plate)
  */
 int add_car_for_current_user(AppContext *ctx, const char *plate, const char *brand,
                              const char *model, const char *requested_owner,
-                             ViolationLevel violation, Date purchase_date, double purchase_price)
+                             VehicleType vehicle_type, ViolationLevel violation,
+                             Date purchase_date, double purchase_price)
 {
     char owner[20];
 
@@ -352,7 +374,8 @@ int add_car_for_current_user(AppContext *ctx, const char *plate, const char *bra
         copy_text(owner, sizeof(owner), ctx->current_user);
     }
 
-    return add_car(ctx, plate, brand, model, owner, violation, purchase_date, purchase_price);
+    return add_car(ctx, plate, brand, model, owner, vehicle_type, violation, purchase_date,
+                   purchase_price);
 }
 
 /*
@@ -360,8 +383,9 @@ int add_car_for_current_user(AppContext *ctx, const char *plate, const char *bra
  * 所以此接口不能改变车辆所有权。
  */
 int modify_car_for_current_user(AppContext *ctx, const char *plate, const char *new_brand,
-                                const char *new_model, ViolationLevel new_violation,
-                                Date new_purchase_date, double new_purchase_price)
+                                const char *new_model, VehicleType new_vehicle_type,
+                                ViolationLevel new_violation, Date new_purchase_date,
+                                double new_purchase_price)
 {
     Car *car;
 
@@ -378,8 +402,8 @@ int modify_car_for_current_user(AppContext *ctx, const char *plate, const char *
     if (!app_is_admin(ctx) && strcmp(car->owner, ctx->current_user) != 0)
         return 0;
 
-    return modify_car(ctx, plate, new_brand, new_model, NULL, new_violation, new_purchase_date,
-                      new_purchase_price);
+    return modify_car(ctx, plate, new_brand, new_model, NULL, new_vehicle_type, new_violation,
+                      new_purchase_date, new_purchase_price);
 }
 
 /* 安全删除入口：完成登录、存在性和所有权检查后才调用底层删除。 */
