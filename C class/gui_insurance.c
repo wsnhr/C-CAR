@@ -21,7 +21,13 @@ typedef struct InsuranceProduct
 } InsuranceProduct;
 
 static const InsuranceProduct INSURANCE_PRODUCTS[] = {
-    {L"交强险", 0.30, 0.8}, {L"车损险", 0.80, 1.2}, {L"三者险", 1.00, 1.5}};
+    {L"交强险", 0.30, 0.8},   /* 强制基础险，保额较低、保费最便宜 */
+    {L"车损险", 0.80, 1.2},   /* 车辆损失险，保额接近车价 */
+    {L"三者险", 1.00, 1.5},   /* 第三者责任险，保额最高 */
+    {L"座位险", 0.20, 0.4},   /* 车上人员责任险，保额较低 */
+    {L"盗抢险", 0.60, 0.7},   /* 全车盗抢险，中档保额 */
+    {L"玻璃险", 0.05, 0.15},  /* 玻璃单独破碎险，保额最小、保费最低 */
+};
 
 #define PRODUCT_COUNT ((int)(sizeof(INSURANCE_PRODUCTS) / sizeof(INSURANCE_PRODUCTS[0])))
 
@@ -157,15 +163,15 @@ void draw_insurance(const AppContext *ctx, const GuiState *state)
 }
 
 /*
- * 模态产品选择器。内部 while(1) 等待鼠标点击；产品按钮 id 为 1~3，取消
+ * 模态产品选择器。内部 while(1) 等待鼠标点击；产品按钮 id 从 1 开始编号，取消
  *
  * id 为 0，因此返回值既能表示选择结果，也能表示取消。
  */
 static int prompt_product_choice(const wchar_t *title, int default_choice)
 {
     // dialog dimensions inside content panel
-    int dialog_w = 520;
-    int dialog_h = 200;
+    int dialog_w = 560;
+    int dialog_h = 300;
     int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
     int dlg_top = CONTENT_TOP + ((CONTENT_BOTTOM - CONTENT_TOP) - dialog_h) / 2;
     int dlg_right = dlg_left + dialog_w;
@@ -186,32 +192,37 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
     RECT desc_rect = {dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84};
     draw_text_rect(L"请选择保险产品：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    // buttons: product buttons + cancel
+    // buttons: 产品按钮按 3 列网格排列，取消按钮居中放在最后一行
+    const int COLS = 3;
     int total_btn = PRODUCT_COUNT + 1; // last = cancel
-    int btn_w = 140;
+    int btn_w = 150;
     int btn_h = 44;
-    int spacing = 18;
-    int total_width = total_btn * btn_w + (total_btn - 1) * spacing;
-    int start_x = dlg_left + (dialog_w - total_width) / 2;
-    int btn_y = dlg_bottom - btn_h - 20;
+    int spacing = 24;
+    int grid_w = COLS * btn_w + (COLS - 1) * spacing;
+    int start_x = dlg_left + (dialog_w - grid_w) / 2;
+    int btn_y0 = dlg_top + 100;
+    int row_pitch = btn_h + 12;
 
-    Button btns[8]; // enough space (PRODUCT_COUNT small)
+    Button btns[PRODUCT_COUNT + 1];
     for (int i = 0; i < PRODUCT_COUNT; ++i)
     {
-        btns[i].rect.left = start_x + i * (btn_w + spacing);
-        btns[i].rect.top = btn_y;
+        int row = i / COLS;
+        int col = i % COLS;
+        btns[i].rect.left = start_x + col * (btn_w + spacing);
+        btns[i].rect.top = btn_y0 + row * row_pitch;
         btns[i].rect.right = btns[i].rect.left + btn_w;
-        btns[i].rect.bottom = btn_y + btn_h;
+        btns[i].rect.bottom = btns[i].rect.top + btn_h;
         btns[i].label = INSURANCE_PRODUCTS[i].name;
         btns[i].id = i + 1;
         draw_button(&btns[i]);
     }
-    // cancel button
+    // cancel button 居中放在产品下方一行
     int ci = PRODUCT_COUNT;
-    btns[ci].rect.left = start_x + ci * (btn_w + spacing);
-    btns[ci].rect.top = btn_y;
+    int cancel_row = (PRODUCT_COUNT + COLS - 1) / COLS;
+    btns[ci].rect.left = dlg_left + (dialog_w - btn_w) / 2;
+    btns[ci].rect.top = btn_y0 + cancel_row * row_pitch;
     btns[ci].rect.right = btns[ci].rect.left + btn_w;
-    btns[ci].rect.bottom = btn_y + btn_h;
+    btns[ci].rect.bottom = btns[ci].rect.top + btn_h;
     btns[ci].label = L"取消";
     btns[ci].id = 0;
     draw_button(&btns[ci]);

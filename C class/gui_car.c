@@ -161,6 +161,86 @@ void draw_cars(const AppContext *ctx, const GuiState *state)
     draw_footer_page(page.page, total);
 }
 
+/* 全国 31 个省级行政区（含直辖市、自治区）的车牌简称汉字。 */
+static const wchar_t *const PROVINCES[] = {
+    L"京", L"津", L"沪", L"渝", L"冀", L"豫", L"云", L"辽",
+    L"黑", L"湘", L"皖", L"鲁", L"新", L"苏", L"浙", L"赣",
+    L"鄂", L"桂", L"甘", L"晋", L"蒙", L"陕", L"吉", L"闽",
+    L"贵", L"粤", L"青", L"藏", L"川", L"宁", L"琼"};
+#define PROVINCE_COUNT ((int)(sizeof(PROVINCES) / sizeof(PROVINCES[0])))
+
+/*
+ * 模态地区选择器：以网格列出全部地区汉字，点击返回所选下标（0 起），
+ * 点击对话框外空白处返回 -1 表示取消。
+ */
+static int prompt_province_choice(const wchar_t *title)
+{
+    const int COLS = 8;
+    const int btn = 40;
+    const int spacing = 8;
+    int rows = (PROVINCE_COUNT + COLS - 1) / COLS;
+    int grid_w = COLS * btn + (COLS - 1) * spacing;
+    int grid_h = rows * btn + (rows - 1) * spacing;
+    int dialog_w = grid_w + 48;
+    int dialog_h = grid_h + 130;
+    int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
+    int dlg_top = CONTENT_TOP + ((CONTENT_BOTTOM - CONTENT_TOP) - dialog_h) / 2;
+    int dlg_right = dlg_left + dialog_w;
+    int dlg_bottom = dlg_top + dialog_h;
+    int start_x = dlg_left + (dialog_w - grid_w) / 2;
+    int start_y = dlg_top + 90;
+    Button btns[PROVINCE_COUNT];
+    int i;
+
+    /* 绘制对话框背景、标题与说明 */
+    setlinecolor(RGB(120, 130, 150));
+    setfillcolor(RGB(255, 255, 255));
+    solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
+    settextstyle(22, 0, L"Segoe UI");
+    settextcolor(RGB(35, 40, 50));
+    RECT title_rect = {dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48};
+    draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    settextstyle(16, 0, L"Segoe UI");
+    RECT desc_rect = {dlg_left + 16, dlg_top + 52, dlg_right - 16, dlg_top + 82};
+    draw_text_rect(L"请选择车牌所属地区（点击外空白处取消）：", desc_rect,
+                   DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    /* 网格按钮 */
+    for (i = 0; i < PROVINCE_COUNT; ++i)
+    {
+        int row = i / COLS;
+        int col = i % COLS;
+        btns[i].rect.left = start_x + col * (btn + spacing);
+        btns[i].rect.top = start_y + row * (btn + spacing);
+        btns[i].rect.right = btns[i].rect.left + btn;
+        btns[i].rect.bottom = btns[i].rect.top + btn;
+        btns[i].label = PROVINCES[i];
+        btns[i].id = i;
+        draw_button(&btns[i]);
+    }
+
+    FlushBatchDraw();
+
+    /* 等待鼠标点击 */
+    ExMessage msg;
+    while (1)
+    {
+        if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN)
+        {
+            int mx = msg.x;
+            int my = msg.y;
+            for (i = 0; i < PROVINCE_COUNT; ++i)
+            {
+                if (point_in_rect(mx, my, &btns[i].rect))
+                    return btns[i].id;
+            }
+            if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom)
+                return -1;
+        }
+        Sleep(10);
+    }
+}
+
 /* 按顺序收集和验证字段，再调用带权限检查的车辆新增接口。 */
 static void handle_add_car(AppContext *ctx, GuiState *state)
 {
@@ -174,14 +254,33 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
     date.month = 1;
     date.day = 1;
     double price = 0.0;
-    if (!prompt_char_field(L"添加车辆", L"请输入车牌：", plate, sizeof(plate), ""))
+    /* 先选择地区汉字，再输入“字母 + 编号”，最后拼接成完整车牌。 */
+    int province_idx = prompt_province_choice(L"选择车牌地区");
+    if (province_idx < 0)
+    {
+        set_message(state, L"已取消添加车辆");
         return;
+    }
+    char province[4] = {0};
+    wchar_to_char(PROVINCES[province_idx], province, sizeof(province));
+
+    char plate_suffix[8] = {0};
+    if (!prompt_char_field(L"添加车辆", L"请输入车牌号（字母+3~6位编号，如 A12345）：",
+                           plate_suffix, sizeof(plate_suffix), ""))
+        return;
+
+    if (!copy_text(plate, sizeof(plate), province) ||
+        !copy_text(plate + strlen(plate), sizeof(plate) - strlen(plate), plate_suffix))
+    {
+        set_message(state, L"车牌过长");
+        return;
+    }
     {
         char normalized_plate[sizeof(plate)] = {0};
         if (!normalize_plate(plate, normalized_plate, sizeof(normalized_plate)))
         {
             set_message(state,
-                        L"车牌格式错误：请使用 A-12345 格式，编号为3~6位且不能含 I/O");
+                        L"车牌格式错误：地区汉字后需为 1 位字母 + 3~6 位编号，且不能含 I/O");
             return;
         }
         copy_text(plate, sizeof(plate), normalized_plate);

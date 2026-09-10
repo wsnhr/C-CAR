@@ -24,3 +24,11 @@
 2026-09-06 20:38:23 | user=nhr | action=LOGIN | target=nhr | details=user login
 2026-09-06 20:39:59 | user=nhr | action=ADD_CLAIM | target=666666 | details=Œﬁ
 2026-09-06 20:42:01 | user=nhr | action=ADD_CAR | target=456456 | details=nhr
+2026-09-10 18:15:01 | user=(none) | action=ADD_USER | target=nhr | details=registered
+2026-09-10 18:15:11 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 18:20:19 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 18:21:33 | user=nhr | action=ADD_CAR | target=U-77777 | details=nhr
+2026-09-10 18:45:20 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 18:46:11 | user=nhr | action=ADD_POLICY | target=121212 | details=≤£¡ßœ’
+2026-09-10 19:04:13 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 19:04:47 | user=nhr | action=ADD_CAR | target=∂ıA12345 | details=nhr

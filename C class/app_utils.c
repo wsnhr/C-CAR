@@ -110,7 +110,8 @@ int copy_text(char *dest, size_t capacity, const char *source)
 /* static 使这个辅助函数只对 app_utils.c 可见，外部模块不能直接调用。 */
 static int plate_char_is_valid(char value)
 {
-    return (value >= '0' && value <= '9') || (value >= 'A' && value <= 'Z') ||
+    return (unsigned char)value >= 0x80 || /* 汉字等 GBK 多字节字符的字节 */
+           (value >= '0' && value <= '9') || (value >= 'A' && value <= 'Z') ||
            (value >= 'a' && value <= 'z') || value == '-';
 }
 
@@ -141,9 +142,9 @@ static char plate_char_to_upper(char value)
 }
 
 /*
- * 标准化并验证新车牌。课程项目采用“地区字母-编号”的简化格式：
- * 1. 第一个字符必须是字母，第二个字符必须是短横线；
- * 2. 短横线后有 3~6 个字母或数字；
+ * 标准化并验证新车牌。课程项目采用“地区汉字 + 字母 + 编号”的真实车牌格式：
+ * 1. 第一个字符必须是地区汉字（GBK 双字节，占 2 个字节）；
+ * 2. 汉字后是 1 位字母，字母后是 3~6 位字母或数字；
  * 3. I 和 O 容易与数字 1、0 混淆，因此不允许使用；
  * 4. 输入的小写字母统一转换为大写，避免大小写不同造成重复车牌。
  */
@@ -151,27 +152,41 @@ int normalize_plate(const char *plate, char *dest, size_t dest_capacity)
 {
     size_t length;
     size_t i;
+    size_t body; /* 地区汉字之后、字母开始的字节下标 */
 
     if (!plate || !dest || dest_capacity == 0)
         return 0;
     dest[0] = '\0';
     length = strlen(plate);
-    if (length < 5 || length > 8 || length >= dest_capacity ||
-        length >= sizeof(((Car *)0)->plate))
+    if (length >= dest_capacity || length >= sizeof(((Car *)0)->plate))
         return 0;
-    if (!((plate[0] >= 'A' && plate[0] <= 'Z') ||
-          (plate[0] >= 'a' && plate[0] <= 'z')) ||
-        plate[1] != '-')
+
+    /* 首字符必须是地区汉字：GBK 首字节落在 0x81~0xFE，占 2 个字节 */
+    if (length < 3 || (unsigned char)plate[0] < 0x81)
+        return 0;
+    body = 2;
+
+    /* 汉字后必须紧跟 1 位字母 */
+    if (!((plate[body] >= 'A' && plate[body] <= 'Z') ||
+          (plate[body] >= 'a' && plate[body] <= 'z')))
+        return 0;
+
+    /* 字母后是 3~6 位字母或数字 */
+    if (length - body - 1 < 3 || length - body - 1 > 6)
         return 0;
 
     for (i = 0; i < length; ++i)
     {
-        char normalized = plate_char_to_upper(plate[i]);
-        if (i >= 2 && !((normalized >= 'A' && normalized <= 'Z') ||
-                        (normalized >= '0' && normalized <= '9')))
-            return 0;
-        if (normalized == 'I' || normalized == 'O')
-            return 0;
+        char normalized = plate[i];
+        if (i >= body)
+        {
+            normalized = plate_char_to_upper(plate[i]);
+            if (!((normalized >= 'A' && normalized <= 'Z') ||
+                  (normalized >= '0' && normalized <= '9')))
+                return 0;
+            if (normalized == 'I' || normalized == 'O')
+                return 0;
+        }
         dest[i] = normalized;
     }
     dest[length] = '\0';
