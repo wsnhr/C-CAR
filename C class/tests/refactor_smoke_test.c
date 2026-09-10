@@ -27,6 +27,11 @@ int main(void)
     AppContext search_ctx;
     AppContext auth_ctx;
     CarSearchCondition condition;
+    Car motorcycle;
+    Car small_car;
+    Car large_car;
+    Policy payout_policy;
+    char normalized_plate[10] = {0};
     int matching_indices[MAX_CARS] = {0};
     int matching_count;
     FILE *legacy_file;
@@ -90,15 +95,17 @@ int main(void)
                                  "11010519491231002X"));
     assert(login_user_account(&search_ctx, "alice", "alice-pass"));
     assert(add_car_for_current_user(&search_ctx, "A-100", "BYD", "Han", "alice",
-                                    VIOLATION_MINOR, purchase_date, 100000.0));
+                                    VEHICLE_TYPE_SMALL_CAR, VIOLATION_MINOR, purchase_date,
+                                    100000.0));
     assert(login_user_account(&search_ctx, "bob", "bob-pass"));
     assert(add_car_for_current_user(&search_ctx, "B-200", "BYD", "Song", "bob",
-                                    VIOLATION_NONE, later_date, 90000.0));
+                                    VEHICLE_TYPE_LARGE_CAR, VIOLATION_NONE, later_date, 90000.0));
     memset(&condition, 0, sizeof(condition));
     strcpy(condition.plate_keyword, "A-");
     strcpy(condition.brand_keyword, "BY");
     strcpy(condition.model_keyword, "Ha");
     strcpy(condition.owner_keyword, "lic");
+    condition.vehicle_type = VEHICLE_TYPE_SMALL_CAR;
     condition.violation = VIOLATION_MINOR;
     /* 普通用户 bob 无法看到 alice 的 A-100，所以结果为 0。 */
     matching_count = collect_matching_car_indices(&search_ctx, 0, &condition, matching_indices,
@@ -113,6 +120,7 @@ int main(void)
     condition.plate_keyword[0] = '\0';
     condition.model_keyword[0] = '\0';
     condition.owner_keyword[0] = '\0';
+    condition.vehicle_type = CAR_VEHICLE_TYPE_ANY;
     condition.violation = CAR_VIOLATION_ANY;
     matching_count = collect_matching_car_indices(&search_ctx, 0, &condition, matching_indices,
                                                   MAX_CARS);
@@ -127,10 +135,43 @@ int main(void)
 
     assert(login_user_account(&ctx, "alice", "new-pass"));
     /* 普通用户即使请求 bob，也只能把车辆登记到自己名下。 */
-    assert(add_car_for_current_user(&ctx, "A-100", "Brand", "Model", "bob", VIOLATION_NONE,
-                                    purchase_date, 100000.0));
+    assert(add_car_for_current_user(&ctx, "a-100", "Brand", "Model", "bob",
+                                    VEHICLE_TYPE_SMALL_CAR, VIOLATION_NONE, purchase_date,
+                                    100000.0));
     car = find_car(&ctx, "A-100");
     assert(car && strcmp(car->owner, "alice") == 0);
+    assert(strcmp(car->plate, "A-100") == 0 && car->vehicle_type == VEHICLE_TYPE_SMALL_CAR);
+    /* 大小写统一后，同一车牌不能再次添加。 */
+    assert(!add_car_for_current_user(&ctx, "A-100", "Other", "Other", "alice",
+                                     VEHICLE_TYPE_MOTORCYCLE, VIOLATION_NONE, purchase_date,
+                                     5000.0));
+    assert(!add_car_for_current_user(&ctx, "C-300", "Other", "Other", "alice",
+                                     (VehicleType)99, VIOLATION_NONE, purchase_date, 5000.0));
+    assert(modify_car_for_current_user(&ctx, "A-100", "Brand", "Model",
+                                       VEHICLE_TYPE_LARGE_CAR, VIOLATION_NONE, purchase_date,
+                                       100000.0));
+    assert(car->vehicle_type == VEHICLE_TYPE_LARGE_CAR);
+    assert(modify_car_for_current_user(&ctx, "A-100", "Brand", "Model",
+                                       VEHICLE_TYPE_SMALL_CAR, VIOLATION_NONE, purchase_date,
+                                       100000.0));
+
+    /* 相同价格、车龄和违章下，大型车保费最高，摩托车最低。 */
+    motorcycle = *car;
+    small_car = *car;
+    large_car = *car;
+    motorcycle.vehicle_type = VEHICLE_TYPE_MOTORCYCLE;
+    small_car.vehicle_type = VEHICLE_TYPE_SMALL_CAR;
+    large_car.vehicle_type = VEHICLE_TYPE_LARGE_CAR;
+    assert(calculate_premium_for_car(&large_car) > calculate_premium_for_car(&small_car));
+    assert(calculate_premium_for_car(&small_car) > calculate_premium_for_car(&motorcycle));
+    memset(&payout_policy, 0, sizeof(payout_policy));
+    payout_policy.coverage_limit = 100000.0;
+    /* 大型车免赔比例最高，因此其他条件相同时批准金额最低。 */
+    assert(calculate_payout_for_claim(NULL, &small_car, 1000.0) == 0.0);
+    assert(calculate_payout_for_claim(&payout_policy, &small_car, 1000.0) >
+           calculate_payout_for_claim(&payout_policy, &motorcycle, 1000.0));
+    assert(calculate_payout_for_claim(&payout_policy, &motorcycle, 1000.0) >
+           calculate_payout_for_claim(&payout_policy, &large_car, 1000.0));
 
     assert(add_policy_for_current_user(&ctx, "P-100", "A-100", "alice", &terms));
     assert(add_claim_for_current_user(&ctx, "C-100", "P-100", "alice", "repair", 1000.0));
@@ -169,8 +210,9 @@ int main(void)
     assert(remove_car_for_current_user(&ctx, "A-100"));
     assert(ctx.car_count == 0 && ctx.policy_count == 0 && ctx.claim_count == 0);
 
-    assert(add_car_for_current_user(&ctx, "A-200", "Brand", "Model", "alice", VIOLATION_MINOR,
-                                    purchase_date, 80000.0));
+    assert(add_car_for_current_user(&ctx, "A-200", "Brand", "Model", "alice",
+                                    VEHICLE_TYPE_MOTORCYCLE, VIOLATION_MINOR, purchase_date,
+                                    80000.0));
     assert(remove_user_cascade(&ctx, "alice"));
     assert(!user_exists(&ctx, "alice"));
     assert(ctx.car_count == 0 && ctx.policy_count == 0 && ctx.claim_count == 0);
@@ -181,7 +223,16 @@ int main(void)
     assert(load_users(&loaded));
     assert(loaded.user_count == 1 && strcmp(loaded.users[0].username, "bob") == 0);
 
-    /* 旧版 cars.txt 只有四个字符串；逐行解析后缺失字段应保持默认值。 */
+    /* 上一版九字段记录没有车型，加载时应默认解释为小型车。 */
+    legacy_file = fopen("cars.txt", "w");
+    assert(legacy_file);
+    fputs("OLD-2 Brand Model bob 0 2024 1 1 80000.00\n", legacy_file);
+    fclose(legacy_file);
+    init_app(&loaded);
+    assert(load_cars(&loaded));
+    assert(loaded.car_count == 1 && loaded.cars[0].vehicle_type == VEHICLE_TYPE_SMALL_CAR);
+
+    /* 最早版 cars.txt 只有四个字符串；缺失字段也应使用兼容默认值。 */
     legacy_file = fopen("cars.txt", "w");
     assert(legacy_file);
     fputs("OLD-1 Brand Model bob\n", legacy_file);
@@ -190,9 +241,16 @@ int main(void)
     assert(load_cars(&loaded));
     assert(loaded.car_count == 1 && strcmp(loaded.cars[0].plate, "OLD-1") == 0);
     assert(loaded.cars[0].purchase_price == 0.0 && loaded.cars[0].purchase_date.year == 0);
+    assert(loaded.cars[0].vehicle_type == VEHICLE_TYPE_SMALL_CAR);
 
     assert(date_days_in_month(2024, 2) == 29);
     assert(date_is_valid(&purchase_date));
+    assert(normalize_plate("b-d12345", normalized_plate, sizeof(normalized_plate)));
+    assert(strcmp(normalized_plate, "B-D12345") == 0);
+    assert(validate_plate("A-12345"));
+    assert(!validate_plate("1-12345"));
+    assert(!validate_plate("A-O1234"));
+    assert(!validate_plate("A-12"));
     assert(!validate_plate("INVALID@"));
     puts("Business and persistence smoke tests passed.");
     return 0;

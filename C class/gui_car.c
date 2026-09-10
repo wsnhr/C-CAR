@@ -64,21 +64,67 @@ static int collect_displayed_car_indices(const AppContext *ctx, const GuiState *
 static void clear_car_search(GuiState *state)
 {
     memset(&state->car_search, 0, sizeof(state->car_search));
+    state->car_search.vehicle_type = CAR_VEHICLE_TYPE_ANY;
     state->car_search.violation = CAR_VIOLATION_ANY;
     state->car_search_active = 0;
 }
 
-/* 把一个 Car 格式化为表格中的宽字符串；count 是目标缓冲区容量。 */
-static void format_car_line(const Car *car, wchar_t *line, size_t count)
+/*
+ * 车辆表格的九个边界形成八列。每个字段只在自己的 RECT 内绘制，并使用
+ * DT_END_ELLIPSIS 截断长文字，因此品牌、型号或车主再长也不会覆盖相邻列。
+ */
+static const int CAR_COLUMN_X[] = {258, 337, 414, 491, 568, 633, 698, 813, 952};
+static const wchar_t *CAR_COLUMN_TITLES[] = {L"车牌", L"品牌", L"型号", L"车主",
+                                             L"车型", L"违章", L"购入日期", L"价格"};
+
+static void draw_car_cell(const wchar_t *text, int column, int top, UINT alignment)
 {
-    wchar_t plate[32], brand[64], model[64], owner[64];
+    RECT rect = {CAR_COLUMN_X[column] + 4, top, CAR_COLUMN_X[column + 1] - 4,
+                 top + ROW_HEIGHT - 4};
+    draw_text_rect(text, rect,
+                   alignment | DT_VCENTER | DT_SINGLELINE | DT_END_ELLIPSIS | DT_NOPREFIX);
+}
+
+/* 表头和数据行使用相同的列边界，避免两者逐渐错位。 */
+static void draw_car_table_header(void)
+{
+    int column;
+    int top = CONTENT_TOP + 15;
+
+    settextstyle(15, 0, L"Microsoft YaHei UI");
+    settextcolor(RGB(55, 65, 80));
+    for (column = 0; column < 8; ++column)
+        draw_car_cell(CAR_COLUMN_TITLES[column], column, top, DT_LEFT);
+}
+
+/* 一辆车逐列绘制，价格右对齐，其余字段不会越过本列矩形。 */
+static void draw_car_row(const Car *car, int row)
+{
+    int top = CONTENT_TOP + 55 + row * ROW_HEIGHT;
+    wchar_t plate[32], brand[64], model[64], owner[64], date[32], price[40];
+
     char_to_wchar(car->plate, plate, 32);
     char_to_wchar(car->brand, brand, 64);
     char_to_wchar(car->model, model, 64);
     char_to_wchar(car->owner, owner, 64);
-    _snwprintf_s(line, count, _TRUNCATE, L"%-8s %-10s %-10s %-10s %-8s %04d-%02d-%02d %.2f", plate,
-                 brand, model, owner, violation_to_text(car->violation), car->purchase_date.year,
-                 car->purchase_date.month, car->purchase_date.day, car->purchase_price);
+    _snwprintf_s(date, 32, _TRUNCATE, L"%04d-%02d-%02d", car->purchase_date.year,
+                 car->purchase_date.month, car->purchase_date.day);
+    _snwprintf_s(price, 40, _TRUNCATE, L"%.2f", car->purchase_price);
+
+    setlinecolor(RGB(238, 242, 247));
+    setfillcolor(row % 2 == 0 ? RGB(250, 252, 255) : RGB(244, 248, 252));
+    solidrectangle(CONTENT_LEFT + 12, top, CONTENT_RIGHT - 12, top + ROW_HEIGHT - 4);
+    setbkmode(TRANSPARENT);
+    settextstyle(15, 0, L"Microsoft YaHei UI");
+    settextcolor(RGB(45, 55, 72));
+    draw_car_cell(plate, 0, top, DT_LEFT);
+    draw_car_cell(brand, 1, top, DT_LEFT);
+    draw_car_cell(model, 2, top, DT_LEFT);
+    draw_car_cell(owner, 3, top, DT_LEFT);
+    draw_car_cell(vehicle_type_to_text(car->vehicle_type), 4, top, DT_LEFT);
+    draw_car_cell(violation_to_text(car->violation), 5, top, DT_LEFT);
+    draw_car_cell(date, 6, top, DT_LEFT);
+    draw_car_cell(price, 7, top, DT_RIGHT);
 }
 
 /* 页面层的薄包装，实际权限过滤由 car.c 负责。 */
@@ -97,29 +143,21 @@ void draw_cars(const AppContext *ctx, const GuiState *state)
     for (i = 0; i < button_count; ++i)
         draw_button(&buttons[i]);
     draw_content_panel();
-    /* 表头顺序必须与 format_car_line 输出字段一致。 */
-    draw_table_header(
-        L"车牌    品牌        型号        车主        违章记录     购入日期     价格");
+    draw_car_table_header();
     int indices[MAX_CARS] = {0};
     int total = collect_displayed_car_indices(ctx, state, indices, MAX_CARS);
     PageRange page = make_page_range(state->car_page, total);
-    /* lines 保存每行文字的地址，buffer 才是真正存放文字的二维数组。 */
-    const wchar_t *lines[PAGE_SIZE] = {0};
-    wchar_t buffer[PAGE_SIZE][256] = {0};
     int line_count = 0;
     for (i = page.start; i < page.end; ++i)
     {
-        format_car_line(&ctx->cars[indices[i]], buffer[line_count], 256);
-        lines[line_count] = buffer[line_count];
+        draw_car_row(&ctx->cars[indices[i]], line_count);
         ++line_count;
     }
     if (line_count == 0)
     {
-        wcsncpy_s(buffer[0], 256, L"无车辆记录", _TRUNCATE);
-        lines[0] = buffer[0];
-        line_count = 1;
+        const wchar_t *empty_lines[] = {L"无车辆记录"};
+        draw_rows(empty_lines, 1);
     }
-    draw_rows(lines, line_count);
     draw_footer_page(page.page, total);
 }
 
@@ -127,6 +165,7 @@ void draw_cars(const AppContext *ctx, const GuiState *state)
 static void handle_add_car(AppContext *ctx, GuiState *state)
 {
     char plate[10] = {0}, brand[20] = {0}, model[20] = {0}, owner[20] = {0};
+    VehicleType vehicle_type = VEHICLE_TYPE_SMALL_CAR;
     ViolationLevel violation = VIOLATION_NONE;
     Date date = {0};
     wchar_t plate_text[32] = {0}, brand_text[64] = {0}, model_text[64] = {0};
@@ -137,10 +176,15 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
     double price = 0.0;
     if (!prompt_char_field(L"添加车辆", L"请输入车牌：", plate, sizeof(plate), ""))
         return;
-    if (!validate_plate(plate))
     {
-        set_message(state, L"车牌格式不合法：只允许字母数字和短横，长度限制请保证不超过9字符");
-        return;
+        char normalized_plate[sizeof(plate)] = {0};
+        if (!normalize_plate(plate, normalized_plate, sizeof(normalized_plate)))
+        {
+            set_message(state,
+                        L"车牌格式错误：请使用 A-12345 格式，编号为3~6位且不能含 I/O");
+            return;
+        }
+        copy_text(plate, sizeof(plate), normalized_plate);
     }
     if (!prompt_char_field(L"添加车辆", L"请输入品牌：", brand, sizeof(brand), ""))
         return;
@@ -156,6 +200,8 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
         set_message(state, L"型号长度不合法");
         return;
     }
+    if (!prompt_vehicle_type_field(L"添加车辆", &vehicle_type, VEHICLE_TYPE_SMALL_CAR))
+        return;
     if (!prompt_violation_field(L"添加车辆", &violation, VIOLATION_NONE))
         return;
     if (!prompt_date_field(L"添加车辆", &date, NULL))
@@ -198,16 +244,18 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
     char_to_wchar(owner, owner_text, 64);
     _snwprintf_s(confirm_message, 512, _TRUNCATE,
                  L"请核对即将添加的车辆：\n\n车牌：%s    品牌：%s\n型号：%s    车主：%s\n"
-                 L"违章等级：%s\n购入日期：%04d-%02d-%02d    价格：%.2f 元",
-                 plate_text, brand_text, model_text, owner_text, violation_to_text(violation),
-                 date.year, date.month, date.day, price);
+                 L"车辆类型：%s    违章等级：%s\n购入日期：%04d-%02d-%02d    价格：%.2f 元",
+                 plate_text, brand_text, model_text, owner_text,
+                 vehicle_type_to_text(vehicle_type), violation_to_text(violation), date.year,
+                 date.month, date.day, price);
     if (!show_confirm_dialog(L"确认添加车辆", confirm_message, L"确认添加", 0))
     {
         set_message(state, L"已取消添加车辆");
         return;
     }
 
-    if (add_car_for_current_user(ctx, plate, brand, model, owner, violation, date, price))
+    if (add_car_for_current_user(ctx, plate, brand, model, owner, vehicle_type, violation, date,
+                                 price))
     {
         save_cars(ctx);
         append_operation_log(ctx, "ADD_CAR", plate, owner);
@@ -226,12 +274,14 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
 static void handle_find_car(AppContext *ctx, GuiState *state)
 {
     CarSearchCondition condition;
+    char vehicle_type_text[2] = {0};
     char violation_text[2] = {0};
     wchar_t message[128] = {0};
     int total;
     int indices[MAX_CARS] = {0};
 
     memset(&condition, 0, sizeof(condition));
+    condition.vehicle_type = CAR_VEHICLE_TYPE_ANY;
     condition.violation = CAR_VIOLATION_ANY;
     if (state->car_search_active)
         condition = state->car_search;
@@ -253,6 +303,31 @@ static void handle_find_car(AppContext *ctx, GuiState *state)
                                     condition.owner_keyword, sizeof(condition.owner_keyword),
                                     condition.owner_keyword))
         return;
+
+    /* 车型使用一个数字输入；空串代表本次查询不限制车辆类型。 */
+    if (condition.vehicle_type != CAR_VEHICLE_TYPE_ANY)
+    {
+        vehicle_type_text[0] = (char)('0' + condition.vehicle_type);
+        vehicle_type_text[1] = '\0';
+    }
+    if (!prompt_optional_char_field(
+            L"多条件查询", L"车辆类型（留空=不限，0=摩托车，1=小型车，2=大型车）：",
+            vehicle_type_text, sizeof(vehicle_type_text), vehicle_type_text))
+        return;
+    if (vehicle_type_text[0] != '\0')
+    {
+        if (vehicle_type_text[1] != '\0' || vehicle_type_text[0] < '0' ||
+            vehicle_type_text[0] > '2')
+        {
+            set_message(state, L"车辆类型输入错误：请留空或输入 0~2");
+            return;
+        }
+        condition.vehicle_type = vehicle_type_text[0] - '0';
+    }
+    else
+    {
+        condition.vehicle_type = CAR_VEHICLE_TYPE_ANY;
+    }
 
     /* 输入框只接收一个字符：空串代表不限，0~5 与 ViolationLevel 枚举对应。 */
     if (condition.violation != CAR_VIOLATION_ANY)
@@ -345,7 +420,7 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
     char plate[10] = {0};
     if (!prompt_char_field(L"编辑车辆", L"请输入要编辑的车牌：", plate, sizeof(plate), ""))
         return;
-    if (!validate_plate(plate))
+    if (!validate_plate_key(plate))
     {
         set_message(state, L"车牌格式不合法");
         return;
@@ -357,6 +432,7 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
         return;
     }
     char brand[20] = {0}, model[20] = {0};
+    VehicleType vehicle_type = car->vehicle_type;
     ViolationLevel violation = car->violation;
     Date date = car->purchase_date;
     double price = car->purchase_price;
@@ -376,6 +452,8 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
         set_message(state, L"型号长度不合法");
         return;
     }
+    if (!prompt_vehicle_type_field(L"编辑车辆", &vehicle_type, car->vehicle_type))
+        return;
     if (!prompt_violation_field(L"编辑车辆", &violation, car->violation))
         return;
     if (!prompt_date_field(L"编辑车辆", &date, &car->purchase_date))
@@ -392,7 +470,8 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
         set_message(state, L"价格不合法（必须在 0 - 1e9 范围内）");
         return;
     }
-    if (modify_car_for_current_user(ctx, plate, brand, model, violation, date, price))
+    if (modify_car_for_current_user(ctx, plate, brand, model, vehicle_type, violation, date,
+                                    price))
     {
         save_cars(ctx);
         append_operation_log(ctx, "MODIFY_CAR", plate, "modified");
@@ -412,7 +491,7 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
 
     if (!prompt_char_field(L"删除车辆", L"请输入要删除的车牌：", plate, sizeof(plate), ""))
         return;
-    if (!validate_plate(plate))
+    if (!validate_plate_key(plate))
     {
         set_message(state, L"车牌格式不合法");
         return;
@@ -430,8 +509,9 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
     char_to_wchar(car->owner, owner_text, 64);
     _snwprintf_s(confirm_message, 512, _TRUNCATE,
                  L"确定删除这辆车吗？\n\n车牌：%s    品牌：%s\n型号：%s    车主：%s\n\n"
-                 L"警告：关联保单和理赔记录也会被删除，此操作无法撤销。",
-                 plate_text, brand_text, model_text, owner_text);
+                 L"车辆类型：%s\n\n警告：关联保单和理赔记录也会被删除，此操作无法撤销。",
+                 plate_text, brand_text, model_text, owner_text,
+                 vehicle_type_to_text(car->vehicle_type));
     if (!show_confirm_dialog(L"删除车辆", confirm_message, L"确认删除", 1))
     {
         set_message(state, L"已取消删除车辆");
