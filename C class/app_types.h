@@ -17,8 +17,8 @@
 /* 容量包含字符串末尾的 '\0'，所以可输入字符数比容量少 1。 */
 #define USERNAME_CAPACITY 20
 #define PASSWORD_INPUT_CAPACITY 20
-#define PASSWORD_SALT_HEX_CAPACITY 33//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
-#define PASSWORD_HASH_HEX_CAPACITY 65//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+#define PASSWORD_SALT_HEX_CAPACITY 33//
+#define PASSWORD_HASH_HEX_CAPACITY 65//
 #define REAL_NAME_CAPACITY 64
 #define ID_CARD_CAPACITY 19
 #define LOGIN_MAX_FAILURES 5       /* 连续失败 5 次后暂时锁定。 */
@@ -33,7 +33,7 @@ typedef struct
     char password[PASSWORD_HASH_HEX_CAPACITY]; /* SHA-256 结果的 64 位十六进制文本，不是明文。 */
     char identity_salt[PASSWORD_SALT_HEX_CAPACITY]; /* 姓名和身份证组合凭据的随机盐。 */
     char identity_hash[PASSWORD_HASH_HEX_CAPACITY]; /* 实名信息哈希，不保存姓名和身份证明文。 */
-} User;//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+} User;//
 
 /*
  * 单个用户名在本次程序运行期间的登录失败记录。locked_until 保存 Unix 秒数；
@@ -69,6 +69,7 @@ typedef struct
  * 车辆类型使用枚举保存，而不是直接保存中文字符串。这样比较和传参更可靠，
  * 写入文件时也只需要保存一个整数。三个值分别对应添加车辆时的三个选项。
  */
+
 typedef enum
 {
     VEHICLE_TYPE_MOTORCYCLE = 0, /* 摩托车 */
@@ -109,7 +110,7 @@ typedef enum
     CLAIM_PENDING = 0,  /* 待审核：用户已提交，等待管理员处理。 */
     CLAIM_APPROVED = 1, /* 已通过：管理员审核通过，可以结案。 */
     CLAIM_SETTLED = 2,  /* 已结案：审核通过后由管理员完成结案。 */
-    CLAIM_REJECTED = 3, /* 已驳回：管理员审核不通过。 *////？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    CLAIM_REJECTED = 3, /* 已驳回：管理员审核不通过。 */
     CLAIM_CANCELLED = 4 /* 已撤销：申请人在审核前主动撤销。 */
 } ClaimStatus;
 
@@ -123,7 +124,7 @@ typedef struct
     char description[256];  /* 理赔说明。 */
     double request_amount;  /* 申请金额。 */
     double approved_amount; /* 规则计算后的批准金额。 */
-    int status;             /* 值来自 ClaimStatus；使用 int 便于文本文件读写。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    int status;             /* 值来自 ClaimStatus；使用 int 便于文本文件读写。 */
     Date claim_date;        /* 申请日期。 */
 } Claim;
 

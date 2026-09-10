@@ -129,6 +129,9 @@ int prompt_optional_char_field(const wchar_t *title, const wchar_t *prompt, char
 int prompt_double_field(const wchar_t *title, const wchar_t *prompt, double *value,
                         double default_value);
 int prompt_date_field(const wchar_t *title, Date *date, const Date *current);
+/* 带上下界限制的日期选择器；min_date/max_date 为 NULL 表示不限制该侧。 */
+int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *current,
+                              const Date *min_date, const Date *max_date);
 int prompt_vehicle_type_field(const wchar_t *title, VehicleType *type, VehicleType current);
 int prompt_violation_field(const wchar_t *title, ViolationLevel *level, ViolationLevel current);
 /*

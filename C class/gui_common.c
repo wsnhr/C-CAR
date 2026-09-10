@@ -379,7 +379,30 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
  * 0。
 
  */
-int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
+/* 把日期限制在 [min_date, max_date] 内；任一界为 NULL 表示不限制该侧。 */
+static void clamp_date_range(int *year, int *month, int *day, const Date *min_date,
+                             const Date *max_date)
+{
+    Date d;
+    d.year = *year;
+    d.month = *month;
+    d.day = *day;
+    if (min_date && date_compare(&d, min_date) < 0)
+    {
+        *year = min_date->year;
+        *month = min_date->month;
+        *day = min_date->day;
+    }
+    else if (max_date && date_compare(&d, max_date) > 0)
+    {
+        *year = max_date->year;
+        *month = max_date->month;
+        *day = max_date->day;
+    }
+}
+
+int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *current,
+                              const Date *min_date, const Date *max_date)
 {
     if (!date)
         return 0;
@@ -416,6 +439,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
         day = 1;
     if (day > dim)
         day = dim;
+    clamp_date_range(&year, &month, &day, min_date, max_date);
 
     int dialog_w = 520;
     int dialog_h = 220;
@@ -481,6 +505,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
                             day = dim2;
+                        clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -497,6 +522,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
                             day = dim2;
+                        clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -510,6 +536,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
                             day = dim2;
+                        clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -523,6 +550,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
                             day = dim2;
+                        clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -533,6 +561,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
                     else if (id == 5)
                     { // day -
                         day = day > 1 ? day - 1 : date_days_in_month(year, month);
+                        clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -544,6 +573,7 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
                     { // day +
                         int dim2 = date_days_in_month(year, month);
                         day = day < dim2 ? day + 1 : 1;
+                        clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -568,6 +598,12 @@ int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
         }
         Sleep(10);
     }
+}
+
+/* 不带上下界限制的日期选择器，供车辆购入日期等场景使用。 */
+int prompt_date_field(const wchar_t *title, Date *date, const Date *current)
+{
+    return prompt_date_field_bounded(title, date, current, NULL, NULL);
 }
 
 /* 将违章枚举转换为宽字符串常量；返回内容不可由调用者修改。 */

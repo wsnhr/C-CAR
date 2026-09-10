@@ -13,11 +13,11 @@
 /*
  * user.c —— 用户注册、登录和登录状态模块
  *
- * 本模块只负责账号数据和身份规则，不读取控制台，也不直接写文件。
- * current_user 为空表示未登录，固定用户名 admin 表示管理员。
+ * 本模块只负责账号数据和身份规则，不读取控制台，也不直接写文件
+ * current_user 为空表示未登录
  */
 
-/* 顺序检查用户名。只遍历 users[0] 到 users[user_count-1]。 */
+/* 顺序检查用户名。只遍历 users[0] 到 users[user_count-1]*/
 int user_exists(const AppContext *ctx, const char *username)
 {
     int i;

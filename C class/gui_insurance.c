@@ -312,6 +312,45 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
  * 数据组合成 PolicyTerms。业务层完成查重、权限校验、保额和保费计算；
  * GUI 只在操作成功后保存数据并记录日志。
  */
+/* 在日期上增加天数，自动处理跨月、跨年。 */
+static Date date_plus_days(Date base, int days)
+{
+    while (days > 0)
+    {
+        int dim = date_days_in_month(base.year, base.month);
+        if (base.day < dim)
+            base.day++;
+        else if (base.month < 12)
+        {
+            base.day = 1;
+            base.month++;
+        }
+        else
+        {
+            base.day = 1;
+            base.month = 1;
+            base.year++;
+        }
+        --days;
+    }
+    return base;
+}
+
+/* 在日期上增加月份，自动把月末天数收敛到当月最大值。 */
+static Date date_plus_months(Date base, int months)
+{
+    base.month += months;
+    while (base.month > 12)
+    {
+        base.month -= 12;
+        base.year++;
+    }
+    int dim = date_days_in_month(base.year, base.month);
+    if (base.day > dim)
+        base.day = dim;
+    return base;
+}
+
 static void handle_add_policy(AppContext *ctx, GuiState *state)
 {
     char policy_id[24] = {0};
@@ -370,18 +409,15 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
         return;
     }
 
-    Date start = date_today();
-    Date end = start;
-    end.year = start.year + 1;
-    if (!prompt_date_field(L"保单生效日", &start, &start))
+    /* 保险有效期固定为一年，只选择生效日期；生效日限定在
+       “今天 + 10 天”到“今天 + 1 个月”之间，默认取今天 + 10 天。 */
+    Date today = date_today();
+    Date min_date = date_plus_days(today, 10);
+    Date max_date = date_plus_months(today, 1);
+    Date start = min_date;
+    if (!prompt_date_field_bounded(L"保单生效日", &start, &start, &min_date, &max_date))
         return;
-    if (!prompt_date_field(L"保单失效日", &end, &end))
-        return;
-    if (!date_is_valid(&start) || !date_is_valid(&end) || date_compare(&start, &end) > 0)
-    {
-        set_message(state, L"生效/失效日期不合法");
-        return;
-    }
+    Date end = date_plus_months(start, 12);
     char product_desc[64] = {0};
     wchar_to_char(INSURANCE_PRODUCTS[choice - 1].name, product_desc, sizeof(product_desc));
     PolicyTerms terms;
