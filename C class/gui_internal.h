@@ -61,8 +61,6 @@ typedef enum
 typedef enum
 {
     CAR_ADD = 101,
-    CAR_LIST_ALL,
-    CAR_LIST_MINE,
     CAR_FIND,
     CAR_SORT,
     CAR_MODIFY,

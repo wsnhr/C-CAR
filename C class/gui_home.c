@@ -694,7 +694,12 @@ void handle_home_action(AppContext *ctx, GuiState *state, int action, int *runni
         break;
     case HOME_CARS:
         state->screen = SCREEN_CARS;
-        state->car_show_mine = 0;
+        /* 每次进入车辆页都恢复默认范围：管理员看全部，普通用户只看本人。 */
+        state->car_show_mine = app_is_admin(ctx) ? 0 : 1;
+        memset(&state->car_search, 0, sizeof(state->car_search));
+        state->car_search.vehicle_type = CAR_VEHICLE_TYPE_ANY;
+        state->car_search.violation = CAR_VIOLATION_ANY;
+        state->car_search_active = 0;
         state->car_page = 0;
         set_message(state, L"已进入车辆管理");
         break;

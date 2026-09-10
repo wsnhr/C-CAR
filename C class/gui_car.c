@@ -8,37 +8,19 @@
  * 日志；删除车辆还要保存被级联修改的保单和理赔文件。
  */
 
-static const Button CAR_ADMIN_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_ADD},
-                                           {{20, 172, 200, 212}, L"查看全部", CAR_LIST_ALL},
-                                           {{20, 224, 200, 264}, L"查看我的", CAR_LIST_MINE},
-                                           {{20, 276, 200, 316}, L"多条件查询", CAR_FIND},
-                                           {{20, 328, 200, 368}, L"车辆排序", CAR_SORT},
-                                           {{20, 380, 200, 420}, L"编辑车辆", CAR_MODIFY},
-                                           {{20, 432, 200, 472}, L"删除车辆", CAR_DELETE},
-                                           {{20, 484, 95, 524}, L"上一页", CAR_PREV},
-                                           {{125, 484, 200, 524}, L"下一页", CAR_NEXT},
-                                           {{20, 544, 200, 584}, L"返回", CAR_BACK}};
-
-static const Button CAR_USER_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_ADD},
-                                          {{20, 224, 200, 264}, L"查看我的", CAR_LIST_MINE},
-                                          {{20, 276, 200, 316}, L"多条件查询", CAR_FIND},
-                                          {{20, 328, 200, 368}, L"车辆排序", CAR_SORT},
-                                          {{20, 380, 200, 420}, L"编辑车辆", CAR_MODIFY},
-                                          {{20, 432, 200, 472}, L"删除车辆", CAR_DELETE},
-                                          {{20, 484, 95, 524}, L"上一页", CAR_PREV},
-                                          {{125, 484, 200, 524}, L"下一页", CAR_NEXT},
-                                          {{20, 544, 200, 584}, L"返回", CAR_BACK}};
-
-static const Button *car_buttons(const AppContext *ctx, int *count)
-{
-    if (app_is_admin(ctx))
-    {
-        *count = (int)(sizeof(CAR_ADMIN_BUTTONS) / sizeof(CAR_ADMIN_BUTTONS[0]));
-        return CAR_ADMIN_BUTTONS;
-    }
-    *count = (int)(sizeof(CAR_USER_BUTTONS) / sizeof(CAR_USER_BUTTONS[0]));
-    return CAR_USER_BUTTONS;
-}
+/*
+ * 两种角色共用一组按钮。管理员默认查看全部车辆，普通用户默认只看本人车辆，
+ * 因此页面不再提供“查看全部”和“查看我的”两个容易混淆的切换按钮。
+ * 翻页按钮放在内容区右下角，与页码处于同一行。
+ */
+static const Button CAR_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_ADD},
+                                     {{20, 172, 200, 212}, L"多条件查询", CAR_FIND},
+                                     {{20, 224, 200, 264}, L"车辆排序", CAR_SORT},
+                                     {{20, 276, 200, 316}, L"编辑车辆", CAR_MODIFY},
+                                     {{20, 328, 200, 368}, L"删除车辆", CAR_DELETE},
+                                     {{20, 380, 200, 420}, L"返回", CAR_BACK},
+                                     {{770, 610, 850, 650}, L"上一页", CAR_PREV},
+                                     {{870, 610, 950, 650}, L"下一页", CAR_NEXT}};
 
 /*
  * 根据当前界面状态决定列表的数据来源。查询开启时使用多条件筛选，否则使用
@@ -58,15 +40,6 @@ static int collect_displayed_car_indices(const AppContext *ctx, const GuiState *
     /* 必须在分页前排序，才能保证整个查询结果有序，而不是只排列当前一页。 */
     sort_car_indices(ctx, indices, count, state->car_sort_field, state->car_sort_ascending);
     return count;
-}
-
-/* 清除查询状态；“查看全部”和“查看我的”使用它恢复普通列表。 */
-static void clear_car_search(GuiState *state)
-{
-    memset(&state->car_search, 0, sizeof(state->car_search));
-    state->car_search.vehicle_type = CAR_VEHICLE_TYPE_ANY;
-    state->car_search.violation = CAR_VIOLATION_ANY;
-    state->car_search_active = 0;
 }
 
 /*
@@ -135,13 +108,10 @@ static void draw_car_row(const Car *car, int row)
 void draw_cars(const AppContext *ctx, const GuiState *state)
 {
     int i;
-    int button_count;
-    const Button *buttons = car_buttons(ctx, &button_count);
+    int button_count = (int)(sizeof(CAR_BUTTONS) / sizeof(CAR_BUTTONS[0]));
     draw_title(L"车辆管理");
     draw_status(ctx);
     draw_message_box(state);
-    for (i = 0; i < button_count; ++i)
-        draw_button(&buttons[i]);
     draw_content_panel();
     draw_car_table_header();
     int indices[MAX_CARS] = {0};
@@ -159,6 +129,9 @@ void draw_cars(const AppContext *ctx, const GuiState *state)
         draw_rows(empty_lines, 1);
     }
     draw_footer_page(page.page, total);
+    /* 最后绘制按钮，防止内容面板覆盖位于右下角的翻页按钮。 */
+    for (i = 0; i < button_count; ++i)
+        draw_button(&CAR_BUTTONS[i]);
 }
 
 /* 全国 31 个省级行政区（含直辖市、自治区）的车牌简称汉字。 */
@@ -640,18 +613,6 @@ void handle_car_action(AppContext *ctx, GuiState *state, int action)
     case CAR_ADD:
         handle_add_car(ctx, state);
         break;
-    case CAR_LIST_ALL:
-        clear_car_search(state);
-        state->car_show_mine = 0;
-        state->car_page = 0;
-        set_message(state, L"显示全部车辆");
-        break;
-    case CAR_LIST_MINE:
-        clear_car_search(state);
-        state->car_show_mine = 1;
-        state->car_page = 0;
-        set_message(state, L"显示我的车辆");
-        break;
     case CAR_FIND:
         handle_find_car(ctx, state);
         break;
@@ -681,10 +642,10 @@ void handle_car_action(AppContext *ctx, GuiState *state, int action)
     }
 }
 
-/* 根据身份构造与画面一致的按钮矩形，并返回鼠标命中的操作编号。 */
+/* 绘制和点击检测共用 CAR_BUTTONS，保证移动后的翻页按钮仍能正确响应。 */
 int hit_test_cars(const AppContext *ctx, int x, int y)
 {
-    int count;
-    const Button *buttons = car_buttons(ctx, &count);
-    return hit_test_buttons(buttons, count, x, y);
+    (void)ctx;
+    return hit_test_buttons(CAR_BUTTONS,
+                            (int)(sizeof(CAR_BUTTONS) / sizeof(CAR_BUTTONS[0])), x, y);
 }
