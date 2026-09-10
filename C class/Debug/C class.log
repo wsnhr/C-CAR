@@ -1,13 +1,15 @@
-﻿  car.c
-  file.c
-  insurance.c
+﻿  app_utils.c
+  car.c
   main.c
+  password_hash.c
   user.c
+  storage.c
+  insurance.c
   正在生成代码...
   gui.c
+  gui_car.c
   gui_common.c
   gui_home.c
-  gui_car.c
   gui_insurance.c
   正在生成代码...
   C class.vcxproj -> D:\Github\C-CAR\Debug\C class.exe

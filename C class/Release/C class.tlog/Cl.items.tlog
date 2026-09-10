@@ -1,3 +1,4 @@
+D:\Github\C-CAR\C class\app_utils.c;D:\Github\C-CAR\C class\Release\app_utils.obj
 D:\Github\C-CAR\C class\car.c;D:\Github\C-CAR\C class\Release\car.obj
 D:\Github\C-CAR\C class\gui.c;D:\Github\C-CAR\C class\Release\gui.obj
 D:\Github\C-CAR\C class\gui_common.c;D:\Github\C-CAR\C class\Release\gui_common.obj
@@ -5,6 +6,7 @@ D:\Github\C-CAR\C class\gui_home.c;D:\Github\C-CAR\C class\Release\gui_home.obj
 D:\Github\C-CAR\C class\gui_car.c;D:\Github\C-CAR\C class\Release\gui_car.obj
 D:\Github\C-CAR\C class\gui_insurance.c;D:\Github\C-CAR\C class\Release\gui_insurance.obj
 D:\Github\C-CAR\C class\main.c;D:\Github\C-CAR\C class\Release\main.obj
+D:\Github\C-CAR\C class\password_hash.c;D:\Github\C-CAR\C class\Release\password_hash.obj
 D:\Github\C-CAR\C class\user.c;D:\Github\C-CAR\C class\Release\user.obj
-D:\Github\C-CAR\C class\file.c;D:\Github\C-CAR\C class\Release\file.obj
+D:\Github\C-CAR\C class\storage.c;D:\Github\C-CAR\C class\Release\storage.obj
 D:\Github\C-CAR\C class\insurance.c;D:\Github\C-CAR\C class\Release\insurance.obj

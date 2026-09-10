@@ -47,7 +47,7 @@ void gui_run(AppContext *ctx)
     state.insurance_view = VIEW_POLICY_LIST;
     set_message(&state, L"请从左侧选择功能");//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
 
-    initgraph(WINDOW_WIDTH, WINDOW_HEIGHT, EX_SHOWCONSOLE);
+    initgraph(WINDOW_WIDTH, WINDOW_HEIGHT, 0); /* 不显示控制台窗口 */
     BeginBatchDraw();
     int running = 1;
     while (running)

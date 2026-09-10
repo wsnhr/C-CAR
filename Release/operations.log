@@ -1,0 +1,6 @@
+2026-09-10 15:19:47 | user=(none) | action=ADD_USER | target=xy | details=registered
+2026-09-10 15:19:53 | user=xy | action=LOGIN | target=xy | details=user login
+2026-09-10 15:21:19 | user=xy | action=ADD_CAR | target=123456 | details=xy
+2026-09-10 15:22:27 | user=xy | action=ADD_POLICY | target=123456 | details=½»Ç¿ÏÕ
+2026-09-10 15:23:37 | user=xy | action=ADD_CLAIM | target=123456 | details=ÎÞ
+2026-09-10 16:55:32 | user=xy | action=LOGIN | target=xy | details=user login
