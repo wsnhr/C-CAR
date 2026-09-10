@@ -8,14 +8,14 @@
  * app_utils.c —— 与具体业务对象无关的公共工具实现
  *
  * 车辆、保险、用户和 GUI 都需要日期、字符串和输入校验。如果每个模块各写
- * 一份，规则很容易逐渐不一致，因此这些函数集中在本文件中。这里不访问
- * AppContext，也不读写文件；调用者只需传入数据，并根据返回值判断成功失败。
+ * 一份，规则很容易逐渐不一致，所以这些函数集中在本文件中。这里不访问
+ * AppContext，也不读写文件；只需传入数据，并根据返回值判断成功失败。
  */
 
 /*
  * 读取本机当前日期。Date result = {0} 会把三个成员全部初始化为 0；如果
  * 系统时间转换失败，就返回这个“零日期”，后续 date_is_valid 会判定它无效。
- * struct tm 的年份从 1900 开始计数，月份从 0 开始，因此要分别加 1900 和 1。
+ * struct tm 的年份从 1900 开始计数，月份从 0 开始，要分别加 1900 和 1。
  */
 Date date_today(void)
 {
@@ -116,7 +116,7 @@ static int plate_char_is_valid(char value)
 }
 
 /*
- * 查找键采用宽松规则，以便旧版 cars.txt 中的车辆仍然可以被查找和删除。
+ * 查找键较为宽松，以便旧版 cars.txt 中的车辆仍然可以被查找和删除。
  * 它只保证字符串能放入数组，而且不包含空格或其他特殊字符。
  */
 int validate_plate_key(const char *plate)
@@ -214,7 +214,7 @@ int validate_string_len(const char *text, int max_length)
     return length > 0 && length < (size_t)max_length;
 }
 
-/* 课程项目把金额限制在 0 到 10 亿元之间，拒绝负数和明显异常的大数。 */
+/* 把金额限制在 0 到 10 亿元之间，拒绝负数和明显异常的大数。 */
 int validate_price_value(double value)
 {
     return value >= 0.0 && value <= 1e9;

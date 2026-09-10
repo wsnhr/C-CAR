@@ -25,7 +25,7 @@ static void draw_ui(const AppContext *ctx, const GuiState *state)
     {
         draw_insurance(ctx, state);
     }
-    FlushBatchDraw();//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    FlushBatchDraw();//
 }
 
 /*
@@ -38,14 +38,14 @@ void gui_run(AppContext *ctx)
     load_cars(ctx);
     load_policies(ctx);
     // 在加载保单后立即更新保单状态（自动过期）
-    update_policy_active_status(ctx);//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    update_policy_active_status(ctx);//
     load_claims(ctx);
 
     GuiState state;
-    memset(&state, 0, sizeof(state)); /* 先把页码、筛选等成员全部清零。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    memset(&state, 0, sizeof(state)); /* 先把页码、筛选等成员全部清零。 */
     state.screen = SCREEN_HOME;
     state.insurance_view = VIEW_POLICY_LIST;
-    set_message(&state, L"请从左侧选择功能");//？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    set_message(&state, L"请从左侧选择功能");//
 
     initgraph(WINDOW_WIDTH, WINDOW_HEIGHT, 0); /* 不显示控制台窗口 */
     BeginBatchDraw();

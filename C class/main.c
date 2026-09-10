@@ -18,7 +18,7 @@ int main(void)
     AppContext ctx;
 
     /*
-     * & 是“取地址运算符”。init_app 需要 AppContext*（指针），所以传入
+     *init_app 需要 AppContext*（指针），所以传入
      * &ctx 而不是 ctx。函数通过这个地址把所有计数和当前用户初始化。
      */
     init_app(&ctx);

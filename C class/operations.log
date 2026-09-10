@@ -38,3 +38,12 @@
 2026-09-10 21:48:49 | user=nhr | action=LOGIN | target=nhr | details=user login
 2026-09-10 22:04:02 | user=nhr | action=LOGIN | target=nhr | details=user login
 2026-09-10 22:39:11 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 23:12:47 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-10 23:13:04 | user=admin | action=LOGOUT | target=admin | details=user logout
+2026-09-10 23:13:17 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 23:18:48 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-10 23:19:08 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-10 23:20:29 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-10 23:20:53 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-10 23:20:58 | user=admin | action=LOGOUT | target=admin | details=user logout
+2026-09-10 23:21:03 | user=nhr | action=LOGIN | target=nhr | details=user login
