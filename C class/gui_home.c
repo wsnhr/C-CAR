@@ -9,7 +9,7 @@
 
 static const Button HOME_GUEST_BUTTONS[] = {{{20, 120, 200, 165}, L"注册", HOME_REGISTER},
                                             {{20, 180, 200, 225}, L"登录", HOME_LOGIN},
-                                            {{20, 240, 200, 285}, L"找回密码", HOME_FORGOT_PASSWORD},
+                                            {{20, 240, 200, 285}, L"忘记密码", HOME_FORGOT_PASSWORD},
                                             {{20, 300, 200, 345}, L"退出", HOME_EXIT}};
 
 static const Button HOME_USER_BUTTONS[] = {{{20, 120, 200, 165}, L"登出", HOME_LOGOUT},
@@ -553,8 +553,8 @@ static void handle_register(AppContext *ctx, GuiState *state)
 }
 
 /*
- * 找回密码的 GUI 流程只负责收集输入和显示结果：
- * 1. 先确认用户名属于可找回的普通账户；
+ * 忘记密码的 GUI 流程只负责收集输入和显示结果：
+ * 1. 先确认用户名属于可重置密码的普通账户；
  * 2. 收集姓名、身份证号和两次新密码，并做快速格式检查；
  * 3. 调用 user.c 验证实名哈希并替换密码哈希；
  * 4. 业务成功后调用 storage.c 保存 users.txt，再追加操作日志。
@@ -570,7 +570,7 @@ static void handle_forgot_password(AppContext *ctx, GuiState *state)
     char new_password[PASSWORD_INPUT_CAPACITY] = {0};
     char confirm_password[PASSWORD_INPUT_CAPACITY] = {0};
 
-    if (!prompt_char_field(L"找回密码", L"请输入用户名：", username, sizeof(username), ""))
+    if (!prompt_char_field(L"忘记密码", L"请输入用户名：", username, sizeof(username), ""))
         return;
     if (!validate_string_len(username, USERNAME_CAPACITY) || strcmp(username, "admin") == 0 ||
         !user_exists(ctx, username))

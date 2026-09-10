@@ -4,7 +4,7 @@
 /*
  * user.h —— 用户模块对外接口
  *
- * GUI 通过这些函数完成注册、登录和找回密码，不应直接修改 User 数组。
+ * GUI 通过这些函数完成注册、登录和忘记密码处理，不应直接修改 User 数组。
  * 实现位于 user.c；密码哈希细节被继续封装在 password_hash.c 中。
  */
 
@@ -27,7 +27,7 @@ extern "C"
     int user_exists(const AppContext *ctx, const char *username);
     int app_is_logged_in(const AppContext *ctx);
     int app_is_admin(const AppContext *ctx);
-    /* 实名信息只用于本地规则校验和找回密码，不代表已连接权威实名服务。 */
+    /* 实名信息只用于本地规则校验和忘记密码处理，不代表已连接权威实名服务。 */
     int validate_real_name(const char *real_name);
     int validate_chinese_id_card(const char *id_card);
     /* 注册/登录/重置只修改内存，不保存文件；控制层负责持久化和日志。 */

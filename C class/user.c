@@ -170,7 +170,7 @@ int register_user_account(AppContext *ctx, const char *username, const char *pas
 }
 
 /*
- * 找回密码的核心业务接口：先用姓名和身份证组合验证 identity_hash，再生成新的
+ * 忘记密码的核心业务接口：先用姓名和身份证组合验证 identity_hash，再生成新的
  * 密码盐和哈希。新值先写入局部数组，全部计算成功后才替换 User 中的旧值，
  * 避免生成过程中失败而把账号留在“只更新了一半”的状态。管理员账号是内置
  * 特殊账号，没有实名哈希，因此明确禁止通过此流程重置。
