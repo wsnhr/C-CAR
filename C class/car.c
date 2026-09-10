@@ -153,6 +153,132 @@ int modify_car(AppContext *ctx, const char *plate, const char *new_brand, const 
 
 /* ================= 当前用户可见性与权限控制 ================= */
 /*
+ * 判断一个文本字段是否满足关键字条件。
+ * keyword[0] == '\0' 表示关键字是空字符串，此时该字段不限制查询结果。
+ * strstr(text, keyword) 会在 text 中查找连续出现的 keyword：找到时返回地址，
+ * 找不到时返回 NULL，因此与 NULL 比较就能实现最基础的“模糊查询”。
+ */
+static int text_contains_keyword(const char *text, const char *keyword)
+{
+    if (!keyword || keyword[0] == '\0')
+        return 1;
+    return text && strstr(text, keyword) != NULL;
+}
+
+/*
+ * 判断一辆车是否同时满足所有查询条件。函数遇到任一不符合的条件就立即
+ * 返回 0；只有检查完所有条件后仍未失败，才返回 1。这就是多个条件之间
+ * 的“并且（AND）”关系。
+ */
+static int car_matches_condition(const Car *car, const CarSearchCondition *condition)
+{
+    if (!car || !condition)
+        return 0;
+
+    if (!text_contains_keyword(car->plate, condition->plate_keyword))
+        return 0;
+    if (!text_contains_keyword(car->brand, condition->brand_keyword))
+        return 0;
+    if (!text_contains_keyword(car->model, condition->model_keyword))
+        return 0;
+    if (!text_contains_keyword(car->owner, condition->owner_keyword))
+        return 0;
+    if (condition->violation != CAR_VIOLATION_ANY &&
+        (int)car->violation != condition->violation)
+        return 0;
+
+    return 1;
+}
+
+/*
+ * 多条件查询与普通列表共用相同的权限规则：管理员可查看全部车辆，普通用户
+ * 被强制限定为本人车辆。indices 只保存原车辆数组的下标，不复制 Car 数据。
+ */
+int collect_matching_car_indices(const AppContext *ctx, int only_mine,
+                                 const CarSearchCondition *condition, int *indices,
+                                 int max_count)
+{
+    int i, count = 0;
+
+    if (!ctx || !condition || !indices || max_count <= 0)
+        return 0;
+
+    if (!app_is_admin(ctx))
+        only_mine = 1;
+
+    for (i = 0; i < ctx->car_count && count < max_count; ++i)
+    {
+        const Car *car = &ctx->cars[i];
+        int is_visible = !only_mine || strcmp(car->owner, ctx->current_user) == 0;
+
+        if (is_visible && car_matches_condition(car, condition))
+            indices[count++] = i;
+    }
+
+    return count;
+}
+
+/*
+ * 比较两辆车在指定字段上的先后关系：负数表示 left 应排在前面，正数表示
+ * right 应排在前面，0 表示相等。避免直接用两个 double 相减，防止精度转换。
+ */
+static int compare_cars_for_sort(const Car *left, const Car *right, CarSortField field)
+{
+    if (field == CAR_SORT_VIOLATION)
+    {
+        if (left->violation < right->violation)
+            return -1;
+        if (left->violation > right->violation)
+            return 1;
+    }
+    else if (field == CAR_SORT_PURCHASE_DATE)
+    {
+        return date_compare(&left->purchase_date, &right->purchase_date);
+    }
+    else if (field == CAR_SORT_PRICE)
+    {
+        if (left->purchase_price < right->purchase_price)
+            return -1;
+        if (left->purchase_price > right->purchase_price)
+            return 1;
+    }
+    return 0;
+}
+
+/*
+ * 使用插入排序重新排列车辆下标。外层循环取出一个待插入下标，内层循环把
+ * 前面较大的元素向右移动，再将下标放进正确位置。项目最多 100 辆车，简单、
+ * 稳定且容易理解的 O(n²) 算法已经足够。
+ */
+void sort_car_indices(const AppContext *ctx, int *indices, int count, CarSortField field,
+                      int ascending)
+{
+    int i;
+
+    if (!ctx || !indices || count <= 1 || field == CAR_SORT_DEFAULT)
+        return;
+
+    for (i = 1; i < count; ++i)
+    {
+        int current_index = indices[i];
+        int position = i - 1;
+
+        while (position >= 0)
+        {
+            int comparison = compare_cars_for_sort(&ctx->cars[indices[position]],
+                                                   &ctx->cars[current_index], field);
+            if (!ascending)
+                comparison = -comparison;
+            if (comparison <= 0)
+                break;
+            indices[position + 1] = indices[position];
+            --position;
+        }
+        indices[position + 1] = current_index;
+    }
+}
+
+/*
  * 收集可见车辆的数组下标，返回实际写入 indices 的数量。这里只复制 int
  * 下标而不复制 Car。普通用户会被强制为 only_mine=1，管理员可看全部。
  */

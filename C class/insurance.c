@@ -577,6 +577,27 @@ int settle_claim_for_current_user(AppContext *ctx, const char *claim_id)
     return settle_claim(ctx, claim_id);
 }
 
+/*
+ * 撤销理赔不会删除数组元素，只把待审核状态改为 CLAIM_CANCELLED，以便保留
+ * 申请金额、事故说明和提交日期。管理员可处理任意记录，普通用户只能撤销
+ * claimant 与当前用户名相同的记录。
+ */
+int cancel_claim_for_current_user(AppContext *ctx, const char *claim_id)
+{
+    Claim *claim;
+
+    if (!ctx || !claim_id || !app_is_logged_in(ctx))
+        return 0;
+    claim = find_claim(ctx, claim_id);
+    if (!claim || claim->status != CLAIM_PENDING)
+        return 0;
+    if (!app_is_admin(ctx) && strcmp(claim->claimant, ctx->current_user) != 0)
+        return 0;
+
+    claim->status = CLAIM_CANCELLED;
+    return 1;
+}
+
 /* 删除某辆车的所有理赔和保单，供车辆模块维护关联完整性。 */
 int remove_insurance_for_plate(AppContext *ctx, const char *plate)
 {

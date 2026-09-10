@@ -1,6 +1,13 @@
 ﻿#ifndef APP_UTILS_H
 #define APP_UTILS_H
 
+/*
+ * app_utils.h —— 公共日期、字符串和输入校验接口
+ *
+ * 头文件只声明“怎样调用”，具体算法在 app_utils.c。业务模块包含本文件后，
+ * 可以共享同一套规则，而不需要复制实现。const 指针表示函数只读取参数。
+ */
+
 #include "app_types.h"
 #include <stddef.h>
 
@@ -9,10 +16,16 @@ extern "C"
 {
 #endif
 
-    /* 日期公共接口：业务层和 GUI 使用同一套日期规则。 */
+    /* 返回本机今天日期；系统时间转换失败时返回 {0, 0, 0}。 */
     Date date_today(void);
+
+    /* left 早于/等于/晚于 right 时分别返回 -1/0/1。 */
     int date_compare(const Date *left, const Date *right);
+
+    /* 返回某年某月天数；月份非法返回 0，2 月会自动处理闰年。 */
     int date_days_in_month(int year, int month);
+
+    /* 检查年份、月份和日期组合是否合法，合法返回 1。 */
     int date_is_valid(const Date *date);
 
     /*
@@ -21,9 +34,13 @@ extern "C"
      */
     int copy_text(char *dest, size_t capacity, const char *source);
 
-    /* 业务输入验证。max_length 表示目标字符数组的总容量。 */
+    /* plate 只能包含英文字母、数字和 '-'，并且必须能放入 Car.plate。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
     int validate_plate(const char *plate);
+
+    /* max_length 是目标 char 数组总容量，已经包含末尾 '\0' 的位置。 */
     int validate_string_len(const char *text, int max_length);
+
+    /* 当前课程项目允许的金额范围是 0~1e9。 */
     int validate_price_value(double value);
 
 #ifdef __cplusplus

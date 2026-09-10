@@ -1,6 +1,13 @@
 ﻿#ifndef INSURANCE_H
 #define INSURANCE_H
 
+/*
+ * insurance.h —— 保单、理赔、审核结案及保险金额计算接口
+ *
+ * 数据关系是 User -> Car -> Policy -> Claim。GUI 调用带
+ * _for_current_user 后缀的函数，insurance.c 负责查重、关联校验和权限判断。
+ */
+
 #include "app_types.h"
 
 #ifdef __cplusplus
@@ -39,8 +46,10 @@ extern "C"
                                    double request_amount);
     int review_claim_for_current_user(AppContext *ctx, const char *claim_id, int approve);
     int settle_claim_for_current_user(AppContext *ctx, const char *claim_id);
+    /* 只有待审核理赔可以撤销；普通用户只能撤销本人记录。 */
+    int cancel_claim_for_current_user(AppContext *ctx, const char *claim_id);
 
-    /* 车辆/用户模块为维护跨实体关系而调用的模块间接口。 */
+    /* 车辆/用户模块为维护跨实体关系而调用的模块间接口。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
     int remove_insurance_for_plate(AppContext *ctx, const char *plate);
     int remove_insurance_for_user(AppContext *ctx, const char *username);
 

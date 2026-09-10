@@ -8,6 +8,7 @@
 #include <ctype.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 
 /*
  * user.c —— 用户注册、登录和登录状态模块
@@ -34,6 +35,10 @@ int user_exists(const AppContext *ctx, const char *username)
     return 0;
 }
 
+/*
+ * 返回 users 数组中匹配记录的地址，找不到返回 NULL。返回的是数组内部地址，
+ * 调用者可以修改该 User，但不能 free；static 表示此辅助函数不公开给其他文件。
+ */
 static User *find_user(AppContext *ctx, const char *username)
 {
     int i;
@@ -45,6 +50,11 @@ static User *find_user(AppContext *ctx, const char *username)
     return NULL;
 }
 
+/*
+ * 验证姓名的本地格式。unsigned char 避免把 UTF-8/本地编码中的高位字节当成
+ * 负数传给 isalpha；ASCII 字符只允许英文字母，中文等高位字节交由原编码保留。
+ * 这只是格式检查，不等于连接公安或其他权威系统完成实名认证。
+ */
 int validate_real_name(const char *real_name)
 {
     const unsigned char *current;
@@ -56,6 +66,11 @@ int validate_real_name(const char *real_name)
     return 1;
 }
 
+/*
+ * 校验 18 位中国居民身份证号码：前 17 位必须为数字；每位乘固定权重求和，
+ * 再用余数确定第 18 位校验码。随后从第 7~14 位取出出生年月日，复用公共日期
+ * 函数排除不存在或晚于今天的日期。toupper 让末位 x 和 X 都能通过比较。
+ */
 int validate_chinese_id_card(const char *id_card)
 {
     static const int weights[17] = {7, 9, 10, 5, 8, 4, 2, 1, 6, 3, 7, 9, 10, 5, 8, 4, 2};
@@ -86,6 +101,11 @@ int validate_chinese_id_card(const char *id_card)
     }
 }
 
+/*
+ * 把姓名与规范化后的身份证号拼成“姓名|身份证号”，作为实名凭据的哈希输入。
+ * output_capacity 由调用者传入，snprintf 返回本来需要写入的字符数；只有返回值
+ * 小于容量时才表示没有截断。组合文本只存在于当前函数调用期间，不写入文件。
+ */
 static int make_identity_text(const char *real_name, const char *id_card, char *output,
                               size_t output_capacity)
 {
@@ -149,6 +169,12 @@ int register_user_account(AppContext *ctx, const char *username, const char *pas
     return 1;
 }
 
+/*
+ * 找回密码的核心业务接口：先用姓名和身份证组合验证 identity_hash，再生成新的
+ * 密码盐和哈希。新值先写入局部数组，全部计算成功后才替换 User 中的旧值，
+ * 避免生成过程中失败而把账号留在“只更新了一半”的状态。管理员账号是内置
+ * 特殊账号，没有实名哈希，因此明确禁止通过此流程重置。
+ */
 int reset_user_password(AppContext *ctx, const char *username, const char *real_name,
                         const char *id_card, const char *new_password)
 {
@@ -200,6 +226,90 @@ int login_user_account(AppContext *ctx, const char *username, const char *passwo
 
     return 0;
 }
+
+/*
+ * 查找某个用户名对应的失败记录；没有记录时在数组尾部新建一项。
+ * 不存在的用户名统一映射为 "<unknown>"，既避免泄露账号是否存在，也防止
+ * 攻击者不断更换不存在的名字来无限创建记录。
+ */
+static LoginAttempt *find_or_create_login_attempt(AppContext *ctx, const char *username)
+{
+    const char *key;
+    int i;
+
+    if (!ctx || !username)
+        return NULL;
+    key = strcmp(username, "admin") == 0 || user_exists(ctx, username) ? username : "<unknown>";
+
+    for (i = 0; i < ctx->login_attempt_count; ++i)
+    {
+        if (strcmp(ctx->login_attempts[i].username, key) == 0)
+            return &ctx->login_attempts[i];
+    }
+    if (ctx->login_attempt_count >= MAX_LOGIN_ATTEMPTS)
+        return NULL;
+
+    i = ctx->login_attempt_count++;
+    memset(&ctx->login_attempts[i], 0, sizeof(ctx->login_attempts[i]));
+    copy_text(ctx->login_attempts[i].username, sizeof(ctx->login_attempts[i].username), key);
+    return &ctx->login_attempts[i];
+}
+
+/*
+ * 登录保护流程只比较时间点，不调用 Sleep，因此不会冻结图形界面。
+ * 第五次失败时记录“当前时间 + 60 秒”；用户以后再次点击登录时再判断是否
+ * 已经过了解锁时间。成功登录会清除该用户名的全部失败记录。
+ */
+LoginResult login_user_account_guarded(AppContext *ctx, const char *username, const char *password,
+                                       int *remaining_attempts, int *remaining_seconds)
+{
+    LoginAttempt *attempt;
+    long long now;
+
+    if (remaining_attempts)
+        *remaining_attempts = 0;
+    if (remaining_seconds)
+        *remaining_seconds = 0;
+    if (!ctx || !username || !password)
+        return LOGIN_RESULT_WRONG_CREDENTIALS;
+
+    attempt = find_or_create_login_attempt(ctx, username);
+    if (!attempt)
+        return LOGIN_RESULT_LOCKED;
+    now = (long long)time(NULL);
+
+    if (attempt->locked_until > now)
+    {
+        if (remaining_seconds)
+            *remaining_seconds = (int)(attempt->locked_until - now);
+        return LOGIN_RESULT_LOCKED;
+    }
+    if (attempt->locked_until != 0)
+    {
+        attempt->locked_until = 0;
+        attempt->failed_count = 0;
+    }
+
+    if (login_user_account(ctx, username, password))
+    {
+        attempt->failed_count = 0;
+        attempt->locked_until = 0;
+        return LOGIN_RESULT_SUCCESS;
+    }
+
+    ++attempt->failed_count;
+    if (attempt->failed_count >= LOGIN_MAX_FAILURES)
+    {
+        attempt->locked_until = now + LOGIN_LOCK_SECONDS;
+        if (remaining_seconds)
+            *remaining_seconds = LOGIN_LOCK_SECONDS;
+        return LOGIN_RESULT_LOCKED;
+    }
+    if (remaining_attempts)
+        *remaining_attempts = LOGIN_MAX_FAILURES - attempt->failed_count;
+    return LOGIN_RESULT_WRONG_CREDENTIALS;
+}
+
 /* 把第一个字符设为 '\0'，即可让 current_user 成为空字符串。 */
 void logout_current_user(AppContext *ctx)
 {

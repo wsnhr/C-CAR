@@ -24,6 +24,137 @@ void set_message(GuiState *state, const wchar_t *text)
 }
 
 /*
+ * 绘制确认框中的一个按钮。primary 为真时绘制实心强调按钮；否则绘制浅色
+ * 取消按钮。dangerous 只影响主按钮颜色，删除类操作使用红色提醒用户。
+ */
+static void draw_confirm_button(const RECT *rect, const wchar_t *label, int primary,
+                                int dangerous)
+{
+    COLORREF fill;
+    COLORREF border;
+    COLORREF text;
+    RECT text_rect;
+
+    if (primary)
+    {
+        fill = dangerous ? RGB(220, 70, 70) : RGB(59, 130, 246);
+        border = dangerous ? RGB(190, 55, 55) : RGB(37, 99, 235);
+        text = RGB(255, 255, 255);
+    }
+    else
+    {
+        fill = RGB(241, 245, 249);
+        border = RGB(203, 213, 225);
+        text = RGB(51, 65, 85);
+    }
+
+    setlinecolor(border);
+    setfillcolor(fill);
+    solidroundrect(rect->left, rect->top, rect->right, rect->bottom, 12, 12);
+    setbkmode(TRANSPARENT);
+    settextstyle(17, 0, L"Microsoft YaHei UI");
+    settextcolor(text);
+    text_rect = *rect;
+    draw_text_rect(label, text_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+}
+
+/*
+ * 统一 EasyX 确认框。
+ *
+ * 函数先用灰蓝色覆盖当前画面，形成遮罩效果，再在窗口中央绘制白色面板。
+ * 随后的 while(1) 是一个临时模态事件循环：用户作出选择前，底层页面不会
+ * 收到点击。函数返回后，GUI 主循环会重新绘制当前页面，因此不需要手工恢复
+ * 被遮罩覆盖的画面。
+ */
+int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
+                        const wchar_t *confirm_label, int dangerous)
+{
+    const int dialog_width = 560;
+    const int dialog_height = 360;
+    const int left = (WINDOW_WIDTH - dialog_width) / 2;
+    const int top = (WINDOW_HEIGHT - dialog_height) / 2;
+    const int right = left + dialog_width;
+    const int bottom = top + dialog_height;
+    RECT title_rect;
+    RECT message_rect;
+    RECT cancel_rect;
+    RECT confirm_rect;
+    ExMessage event;
+
+    if (!title)
+        title = L"请确认操作";
+    if (!message)
+        message = L"是否继续执行当前操作？";
+    if (!confirm_label)
+        confirm_label = dangerous ? L"确认删除" : L"确认";
+
+    /* EasyX 没有透明遮罩控件，这里用统一的浅灰蓝色模拟背景变暗。 */
+    setlinecolor(RGB(211, 219, 230));
+    setfillcolor(RGB(211, 219, 230));
+    solidrectangle(0, 0, WINDOW_WIDTH, WINDOW_HEIGHT);
+
+    /* 先绘制偏移的阴影，再绘制弹窗主体。 */
+    setlinecolor(RGB(174, 185, 201));
+    setfillcolor(RGB(174, 185, 201));
+    solidroundrect(left + 5, top + 6, right + 5, bottom + 6, 18, 18);
+    setlinecolor(RGB(203, 213, 225));
+    setfillcolor(RGB(255, 255, 255));
+    solidroundrect(left, top, right, bottom, 18, 18);
+
+    /* 左侧色条让普通确认和危险确认可以快速区分。 */
+    setlinecolor(dangerous ? RGB(220, 70, 70) : RGB(59, 130, 246));
+    setfillcolor(dangerous ? RGB(220, 70, 70) : RGB(59, 130, 246));
+    solidroundrect(left + 22, top + 24, left + 30, top + 66, 6, 6);
+
+    title_rect.left = left + 46;
+    title_rect.top = top + 18;
+    title_rect.right = right - 24;
+    title_rect.bottom = top + 72;
+    setbkmode(TRANSPARENT);
+    settextstyle(25, 0, L"Microsoft YaHei UI");
+    settextcolor(RGB(30, 41, 59));
+    draw_text_rect(title, title_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+
+    setlinecolor(RGB(226, 232, 240));
+    line(left + 24, top + 82, right - 24, top + 82);
+
+    message_rect.left = left + 34;
+    message_rect.top = top + 100;
+    message_rect.right = right - 34;
+    message_rect.bottom = bottom - 88;
+    settextstyle(16, 0, L"Microsoft YaHei UI");
+    settextcolor(dangerous ? RGB(127, 29, 29) : RGB(51, 65, 85));
+    draw_text_rect(message, message_rect, DT_LEFT | DT_TOP | DT_WORDBREAK);
+
+    cancel_rect.left = right - 276;
+    cancel_rect.top = bottom - 66;
+    cancel_rect.right = right - 154;
+    cancel_rect.bottom = bottom - 22;
+    confirm_rect.left = right - 142;
+    confirm_rect.top = bottom - 66;
+    confirm_rect.right = right - 22;
+    confirm_rect.bottom = bottom - 22;
+    draw_confirm_button(&cancel_rect, L"取消", 0, dangerous);
+    draw_confirm_button(&confirm_rect, confirm_label, 1, dangerous);
+    FlushBatchDraw();
+
+    while (1)
+    {
+        if (peekmessage(&event, EM_MOUSE, 1) && event.message == WM_LBUTTONDOWN)
+        {
+            if (point_in_rect(event.x, event.y, &confirm_rect))
+                return 1;
+            if (point_in_rect(event.x, event.y, &cancel_rect))
+                return 0;
+            /* 点击面板外部等价于取消，防止用户误以为弹窗已确认。 */
+            if (event.x < left || event.x > right || event.y < top || event.y > bottom)
+                return 0;
+        }
+        Sleep(10);
+    }
+}
+
+/*
  * 将系统代码页的 char 字符串转换为 wchar_t 字符串。dest_count 是目标数组
  * 的元素数量而不是字节数，最后手工补 L'\0' 保证字符串结束。
  */
@@ -79,6 +210,27 @@ int prompt_char_field(const wchar_t *title, const wchar_t *prompt, char *dest, i
         return 0;
     wchar_to_char(text, dest, dest_count);
     return dest[0] != '\0';
+}
+
+/*
+ * 收集可选文本。这里不把空字符串当成取消：按“确定”后即使没有输入内容，
+ * 仍返回 1，并把 dest 设为空字符串。查询功能由此表达“这个字段不限”。
+ */
+int prompt_optional_char_field(const wchar_t *title, const wchar_t *prompt, char *dest,
+                               int dest_count, const char *default_value)
+{
+    wchar_t text[256] = {0};
+    wchar_t initial[256] = {0};
+
+    if (!dest || dest_count <= 0)
+        return 0;
+    if (default_value)
+        char_to_wchar(default_value, initial, 256);
+    if (!prompt_text(title, prompt, text, 256, initial))
+        return 0;
+
+    wchar_to_char(text, dest, dest_count);
+    return 1;
 }
 
 /*
