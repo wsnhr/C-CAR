@@ -11,21 +11,23 @@
 static const Button CAR_ADMIN_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_ADD},
                                            {{20, 172, 200, 212}, L"查看全部", CAR_LIST_ALL},
                                            {{20, 224, 200, 264}, L"查看我的", CAR_LIST_MINE},
-                                           {{20, 276, 200, 316}, L"查找车辆", CAR_FIND},
-                                           {{20, 328, 200, 368}, L"编辑车辆", CAR_MODIFY},
-                                           {{20, 380, 200, 420}, L"删除车辆", CAR_DELETE},
-                                           {{20, 432, 95, 472}, L"上一页", CAR_PREV},
-                                           {{125, 432, 200, 472}, L"下一页", CAR_NEXT},
-                                           {{20, 492, 200, 532}, L"返回", CAR_BACK}};
+                                           {{20, 276, 200, 316}, L"多条件查询", CAR_FIND},
+                                           {{20, 328, 200, 368}, L"车辆排序", CAR_SORT},
+                                           {{20, 380, 200, 420}, L"编辑车辆", CAR_MODIFY},
+                                           {{20, 432, 200, 472}, L"删除车辆", CAR_DELETE},
+                                           {{20, 484, 95, 524}, L"上一页", CAR_PREV},
+                                           {{125, 484, 200, 524}, L"下一页", CAR_NEXT},
+                                           {{20, 544, 200, 584}, L"返回", CAR_BACK}};
 
 static const Button CAR_USER_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_ADD},
                                           {{20, 224, 200, 264}, L"查看我的", CAR_LIST_MINE},
-                                          {{20, 276, 200, 316}, L"查找车辆", CAR_FIND},
-                                          {{20, 328, 200, 368}, L"编辑车辆", CAR_MODIFY},
-                                          {{20, 380, 200, 420}, L"删除车辆", CAR_DELETE},
-                                          {{20, 432, 95, 472}, L"上一页", CAR_PREV},
-                                          {{125, 432, 200, 472}, L"下一页", CAR_NEXT},
-                                          {{20, 492, 200, 532}, L"返回", CAR_BACK}};
+                                          {{20, 276, 200, 316}, L"多条件查询", CAR_FIND},
+                                          {{20, 328, 200, 368}, L"车辆排序", CAR_SORT},
+                                          {{20, 380, 200, 420}, L"编辑车辆", CAR_MODIFY},
+                                          {{20, 432, 200, 472}, L"删除车辆", CAR_DELETE},
+                                          {{20, 484, 95, 524}, L"上一页", CAR_PREV},
+                                          {{125, 484, 200, 524}, L"下一页", CAR_NEXT},
+                                          {{20, 544, 200, 584}, L"返回", CAR_BACK}};
 
 static const Button *car_buttons(const AppContext *ctx, int *count)
 {
@@ -36,6 +38,34 @@ static const Button *car_buttons(const AppContext *ctx, int *count)
     }
     *count = (int)(sizeof(CAR_USER_BUTTONS) / sizeof(CAR_USER_BUTTONS[0]));
     return CAR_USER_BUTTONS;
+}
+
+/*
+ * 根据当前界面状态决定列表的数据来源。查询开启时使用多条件筛选，否则使用
+ * 原来的“全部/我的车辆”列表。绘制和翻页都调用本函数，保证两处数量一致。
+ */
+static int collect_displayed_car_indices(const AppContext *ctx, const GuiState *state,
+                                         int *indices, int max_count)
+{
+    int count;
+
+    if (state->car_search_active)
+        count = collect_matching_car_indices(ctx, state->car_show_mine, &state->car_search, indices,
+                                             max_count);
+    else
+        count = collect_visible_car_indices(ctx, state->car_show_mine, indices, max_count);
+
+    /* 必须在分页前排序，才能保证整个查询结果有序，而不是只排列当前一页。 */
+    sort_car_indices(ctx, indices, count, state->car_sort_field, state->car_sort_ascending);
+    return count;
+}
+
+/* 清除查询状态；“查看全部”和“查看我的”使用它恢复普通列表。 */
+static void clear_car_search(GuiState *state)
+{
+    memset(&state->car_search, 0, sizeof(state->car_search));
+    state->car_search.violation = CAR_VIOLATION_ANY;
+    state->car_search_active = 0;
 }
 
 /* 把一个 Car 格式化为表格中的宽字符串；count 是目标缓冲区容量。 */
@@ -71,7 +101,7 @@ void draw_cars(const AppContext *ctx, const GuiState *state)
     draw_table_header(
         L"车牌    品牌        型号        车主        违章记录     购入日期     价格");
     int indices[MAX_CARS] = {0};
-    int total = collect_visible_car_indices(ctx, state->car_show_mine, indices, MAX_CARS);
+    int total = collect_displayed_car_indices(ctx, state, indices, MAX_CARS);
     PageRange page = make_page_range(state->car_page, total);
     /* lines 保存每行文字的地址，buffer 才是真正存放文字的二维数组。 */
     const wchar_t *lines[PAGE_SIZE] = {0};
@@ -99,6 +129,8 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
     char plate[10] = {0}, brand[20] = {0}, model[20] = {0}, owner[20] = {0};
     ViolationLevel violation = VIOLATION_NONE;
     Date date = {0};
+    wchar_t plate_text[32] = {0}, brand_text[64] = {0}, model_text[64] = {0};
+    wchar_t owner_text[64] = {0}, confirm_message[512] = {0};
     date.year = date_today().year;
     date.month = 1;
     date.day = 1;
@@ -155,6 +187,26 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
     {
         copy_text(owner, sizeof(owner), ctx->current_user);
     }
+
+    /*
+     * 所有输入都通过验证后再显示摘要。只有确认返回 1，下面的业务函数才会
+     * 修改车辆数组；取消不会保存文件，也不会写入操作日志。
+     */
+    char_to_wchar(plate, plate_text, 32);
+    char_to_wchar(brand, brand_text, 64);
+    char_to_wchar(model, model_text, 64);
+    char_to_wchar(owner, owner_text, 64);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"请核对即将添加的车辆：\n\n车牌：%s    品牌：%s\n型号：%s    车主：%s\n"
+                 L"违章等级：%s\n购入日期：%04d-%02d-%02d    价格：%.2f 元",
+                 plate_text, brand_text, model_text, owner_text, violation_to_text(violation),
+                 date.year, date.month, date.day, price);
+    if (!show_confirm_dialog(L"确认添加车辆", confirm_message, L"确认添加", 0))
+    {
+        set_message(state, L"已取消添加车辆");
+        return;
+    }
+
     if (add_car_for_current_user(ctx, plate, brand, model, owner, violation, date, price))
     {
         save_cars(ctx);
@@ -166,28 +218,124 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
         set_message(state, L"添加车辆失败（可能车牌已存在或已达上限）");
 }
 
-/* 使用权限感知的 find_visible_car，普通用户无法查询他人车辆。 */
+/*
+ * 依次收集车牌、品牌、型号、车主和违章等级。每个字符串都允许留空，留空表示
+ * 不限制该字段；多个已填写条件必须同时满足。普通用户不询问车主，因为业务层
+ * 本来就会把结果限制在当前用户名下，避免通过查询看到他人车辆。
+ */
 static void handle_find_car(AppContext *ctx, GuiState *state)
 {
-    char plate[10] = {0};
-    if (!prompt_char_field(L"查找车辆", L"请输入车牌：", plate, sizeof(plate), ""))
+    CarSearchCondition condition;
+    char violation_text[2] = {0};
+    wchar_t message[128] = {0};
+    int total;
+    int indices[MAX_CARS] = {0};
+
+    memset(&condition, 0, sizeof(condition));
+    condition.violation = CAR_VIOLATION_ANY;
+    if (state->car_search_active)
+        condition = state->car_search;
+
+    if (!prompt_optional_char_field(L"多条件查询", L"车牌关键字（留空=不限）：",
+                                    condition.plate_keyword, sizeof(condition.plate_keyword),
+                                    condition.plate_keyword))
         return;
-    const Car *car = find_visible_car(ctx, plate);
-    if (!car)
+    if (!prompt_optional_char_field(L"多条件查询", L"品牌关键字（留空=不限）：",
+                                    condition.brand_keyword, sizeof(condition.brand_keyword),
+                                    condition.brand_keyword))
+        return;
+    if (!prompt_optional_char_field(L"多条件查询", L"型号关键字（留空=不限）：",
+                                    condition.model_keyword, sizeof(condition.model_keyword),
+                                    condition.model_keyword))
+        return;
+    if (app_is_admin(ctx) &&
+        !prompt_optional_char_field(L"多条件查询", L"车主关键字（留空=不限）：",
+                                    condition.owner_keyword, sizeof(condition.owner_keyword),
+                                    condition.owner_keyword))
+        return;
+
+    /* 输入框只接收一个字符：空串代表不限，0~5 与 ViolationLevel 枚举对应。 */
+    if (condition.violation != CAR_VIOLATION_ANY)
     {
-        set_message(state, L"未找到该车辆");
+        violation_text[0] = (char)('0' + condition.violation);
+        violation_text[1] = '\0';
+    }
+    if (!prompt_optional_char_field(
+            L"多条件查询",
+            L"违章等级（留空=不限，0=无，1=较轻微，2=轻微，3=中等，4=较严重，5=严重）：",
+            violation_text, sizeof(violation_text), violation_text))
+        return;
+    if (violation_text[0] != '\0')
+    {
+        if (violation_text[1] != '\0' || violation_text[0] < '0' || violation_text[0] > '5')
+        {
+            set_message(state, L"违章等级输入错误：请留空或输入 0~5");
+            return;
+        }
+        condition.violation = violation_text[0] - '0';
+    }
+    else
+    {
+        condition.violation = CAR_VIOLATION_ANY;
+    }
+
+    state->car_search = condition;
+    state->car_search_active = 1;
+    state->car_show_mine = app_is_admin(ctx) ? 0 : 1;
+    state->car_page = 0;
+    total = collect_displayed_car_indices(ctx, state, indices, MAX_CARS);
+    _snwprintf_s(message, 128, _TRUNCATE, L"多条件查询完成，共找到 %d 条车辆记录", total);
+    set_message(state, message);
+}
+
+/*
+ * 车辆排序只保存显示规则，不修改任何车辆数据。0 恢复登记顺序；选择其他
+ * 字段后再输入升序或降序。排序会同时作用于普通列表和多条件查询结果。
+ */
+static void handle_sort_cars(GuiState *state)
+{
+    char field_text[8] = {0};
+    char direction_text[8] = {0};
+    CarSortField field;
+    const wchar_t *field_name;
+    wchar_t message[128] = {0};
+
+    if (!prompt_char_field(L"车辆排序",
+                           L"请选择字段：0=恢复默认，1=违章等级，2=购入日期，3=购入价格：",
+                           field_text, sizeof(field_text), "0"))
+        return;
+    if (field_text[1] != '\0' || field_text[0] < '0' || field_text[0] > '3')
+    {
+        set_message(state, L"排序字段输入错误：请输入 0~3");
         return;
     }
-    wchar_t plate_t[32], brand_t[64], model_t[64], owner_t[64], message[512];
-    char_to_wchar(car->plate, plate_t, 32);
-    char_to_wchar(car->brand, brand_t, 64);
-    char_to_wchar(car->model, model_t, 64);
-    char_to_wchar(car->owner, owner_t, 64);
-    _snwprintf_s(message, 512, _TRUNCATE,
-                 L"车牌:%s 品牌:%s 型号:%s 车主:%s 违章:%s 购入:%04d-%02d-%02d 价格:%.2f元",
-                 plate_t, brand_t, model_t, owner_t, violation_to_text(car->violation),
-                 car->purchase_date.year, car->purchase_date.month, car->purchase_date.day,
-                 car->purchase_price);
+    if (field_text[0] == '0')
+    {
+        state->car_sort_field = CAR_SORT_DEFAULT;
+        state->car_sort_ascending = 1;
+        state->car_page = 0;
+        set_message(state, L"已恢复车辆默认登记顺序");
+        return;
+    }
+
+    field = (CarSortField)(field_text[0] - '0');
+    if (!prompt_char_field(L"车辆排序", L"请选择方向：1=升序，2=降序：", direction_text,
+                           sizeof(direction_text), "1"))
+        return;
+    if (direction_text[1] != '\0' || (direction_text[0] != '1' && direction_text[0] != '2'))
+    {
+        set_message(state, L"排序方向输入错误：请输入 1 或 2");
+        return;
+    }
+
+    field_name = field == CAR_SORT_VIOLATION
+                     ? L"违章等级"
+                     : (field == CAR_SORT_PURCHASE_DATE ? L"购入日期" : L"购入价格");
+    state->car_sort_field = field;
+    state->car_sort_ascending = direction_text[0] == '1';
+    state->car_page = 0;
+    _snwprintf_s(message, 128, _TRUNCATE, L"当前排序：%s（%s）", field_name,
+                 state->car_sort_ascending ? L"升序" : L"降序");
     set_message(state, message);
 }
 
@@ -258,6 +406,10 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
 static void handle_delete_car(AppContext *ctx, GuiState *state)
 {
     char plate[10] = {0};
+    const Car *car;
+    wchar_t plate_text[32] = {0}, brand_text[64] = {0}, model_text[64] = {0};
+    wchar_t owner_text[64] = {0}, confirm_message[512] = {0};
+
     if (!prompt_char_field(L"删除车辆", L"请输入要删除的车牌：", plate, sizeof(plate), ""))
         return;
     if (!validate_plate(plate))
@@ -265,6 +417,27 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
         set_message(state, L"车牌格式不合法");
         return;
     }
+    car = find_visible_car(ctx, plate);
+    if (!car)
+    {
+        set_message(state, L"未找到该车辆或无权删除");
+        return;
+    }
+
+    char_to_wchar(car->plate, plate_text, 32);
+    char_to_wchar(car->brand, brand_text, 64);
+    char_to_wchar(car->model, model_text, 64);
+    char_to_wchar(car->owner, owner_text, 64);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"确定删除这辆车吗？\n\n车牌：%s    品牌：%s\n型号：%s    车主：%s\n\n"
+                 L"警告：关联保单和理赔记录也会被删除，此操作无法撤销。",
+                 plate_text, brand_text, model_text, owner_text);
+    if (!show_confirm_dialog(L"删除车辆", confirm_message, L"确认删除", 1))
+    {
+        set_message(state, L"已取消删除车辆");
+        return;
+    }
+
     if (remove_car_for_current_user(ctx, plate))
     {
         save_cars(ctx);
@@ -281,7 +454,7 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
 void handle_car_action(AppContext *ctx, GuiState *state, int action)
 {
     int indices[MAX_CARS] = {0};
-    int total = collect_visible_car_indices(ctx, state->car_show_mine, indices, MAX_CARS);
+    int total = collect_displayed_car_indices(ctx, state, indices, MAX_CARS);
     PageRange page = make_page_range(state->car_page, total);
     switch (action)
     {
@@ -289,17 +462,22 @@ void handle_car_action(AppContext *ctx, GuiState *state, int action)
         handle_add_car(ctx, state);
         break;
     case CAR_LIST_ALL:
+        clear_car_search(state);
         state->car_show_mine = 0;
         state->car_page = 0;
         set_message(state, L"显示全部车辆");
         break;
     case CAR_LIST_MINE:
+        clear_car_search(state);
         state->car_show_mine = 1;
         state->car_page = 0;
         set_message(state, L"显示我的车辆");
         break;
     case CAR_FIND:
         handle_find_car(ctx, state);
+        break;
+    case CAR_SORT:
+        handle_sort_cars(state);
         break;
     case CAR_MODIFY:
         handle_modify_car(ctx, state);

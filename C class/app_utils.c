@@ -4,6 +4,19 @@
 #include <string.h>
 #include <time.h>
 
+/*
+ * app_utils.c —— 与具体业务对象无关的公共工具实现
+ *
+ * 车辆、保险、用户和 GUI 都需要日期、字符串和输入校验。如果每个模块各写
+ * 一份，规则很容易逐渐不一致，因此这些函数集中在本文件中。这里不访问
+ * AppContext，也不读写文件；调用者只需传入数据，并根据返回值判断成功失败。
+ */
+
+/*
+ * 读取本机当前日期。Date result = {0} 会把三个成员全部初始化为 0；如果
+ * 系统时间转换失败，就返回这个“零日期”，后续 date_is_valid 会判定它无效。
+ * struct tm 的年份从 1900 开始计数，月份从 0 开始，因此要分别加 1900 和 1。
+ */
 Date date_today(void)
 {
     Date result = {0};
@@ -24,6 +37,11 @@ Date date_today(void)
     return result;
 }
 
+/*
+ * 按年、月、日依次比较两个日期：left 较早返回 -1，相同返回 0，较晚返回 1。
+ * -> 用于通过结构体指针访问成员；?: 是条件运算符，可理解为简写的 if/else。
+ * 空指针无法比较，这里返回 0，业务调用前仍应先保证参数有效。
+ */
 int date_compare(const Date *left, const Date *right)
 {
     if (!left || !right)
@@ -37,6 +55,11 @@ int date_compare(const Date *left, const Date *right)
     return 0;
 }
 
+/*
+ * 返回指定月份的天数，月份非法时返回 0。days 声明为 static const：
+ * const 表示内容不可修改；static 表示数组只创建一次，并且只在本函数可见。
+ * 闰年规则是“能被 4 整除，并且不能被 100 整除；或者能被 400 整除”。
+ */
 int date_days_in_month(int year, int month)
 {
     static const int days[] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31};
@@ -51,6 +74,7 @@ int date_days_in_month(int year, int month)
     return days[month - 1];
 }
 
+/* 先限制年份和月份，再用当月最大天数检查 day，避免 2 月 30 日等非法日期。 */
 int date_is_valid(const Date *date)
 {
     int max_day;
@@ -61,6 +85,11 @@ int date_is_valid(const Date *date)
     return max_day > 0 && date->day >= 1 && date->day <= max_day;
 }
 
+/*
+ * 完整复制 C 字符串。capacity 是目标数组总容量，必须包含结尾的 '\0'。
+ * strlen 不计算 '\0'，所以 length >= capacity 时放不下，函数拒绝截断。
+ * memcpy 的 length + 1 把字符串内容和末尾 '\0' 一起复制过去。
+ */
 int copy_text(char *dest, size_t capacity, const char *source)
 {
     size_t length;
@@ -78,12 +107,18 @@ int copy_text(char *dest, size_t capacity, const char *source)
     return 1;
 }
 
+/* static 使这个辅助函数只对 app_utils.c 可见，外部模块不能直接调用。 */
 static int plate_char_is_valid(char value)
 {
     return (value >= '0' && value <= '9') || (value >= 'A' && value <= 'Z') ||
            (value >= 'a' && value <= 'z') || value == '-';
 }
 
+/*
+ * 车牌必须非空、能放进 Car.plate，并且每个字符都是字母、数字或连字符。
+ * sizeof(((Car *)0)->plate) 只在编译期询问 plate 数组大小，并不会真的访问
+ * 空地址；这样即使以后修改 plate 容量，校验上限也会自动同步。
+ */
 int validate_plate(const char *plate)
 {
     const char *current;
@@ -98,6 +133,10 @@ int validate_plate(const char *plate)
     return 1;
 }
 
+/*
+ * 验证字符串能完整放进容量为 max_length 的 char 数组。循环条件不需要手写，
+ * strlen 得到有效字符数；必须满足 0 < length < max_length 才能为 '\0' 留位置。
+ */
 int validate_string_len(const char *text, int max_length)
 {
     size_t length;
@@ -108,6 +147,7 @@ int validate_string_len(const char *text, int max_length)
     return length > 0 && length < (size_t)max_length;
 }
 
+/* 课程项目把金额限制在 0 到 10 亿元之间，拒绝负数和明显异常的大数。 */
 int validate_price_value(double value)
 {
     return value >= 0.0 && value <= 1e9;

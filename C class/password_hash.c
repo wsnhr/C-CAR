@@ -127,6 +127,11 @@ static int secure_equal(const unsigned char *left, const unsigned char *right, i
     return difference == 0;
 }
 
+/*
+ * 创建新的密码凭据。salt 和 hash 是二进制数组，不能直接当作 C 字符串保存；
+ * hex_encode 将每个字节编码成两个可打印字符，所以 16 字节盐变成 32 位文本，
+ * 32 字节 SHA-256 结果变成 64 位文本。输出数组容量还要额外包含末尾 '\0'。
+ */
 int password_hash_create(const char *plain_password, char salt_hex[PASSWORD_SALT_HEX_CAPACITY],
                          char hash_hex[PASSWORD_HASH_HEX_CAPACITY])
 {
@@ -145,6 +150,10 @@ int password_hash_create(const char *plain_password, char salt_hex[PASSWORD_SALT
     return 1;
 }
 
+/*
+ * 验证时不需要、也无法从哈希“解密”原密码。函数先还原保存的盐和预期哈希，
+ * 再对本次输入执行相同的 SHA-256(salt || password)，最后恒定时间比较两个结果。
+ */
 int password_hash_matches(const char *plain_password, const char *salt_hex, const char *hash_hex)
 {
     unsigned char salt[SALT_BYTE_COUNT];

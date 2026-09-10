@@ -32,11 +32,12 @@ static const Button INSURANCE_BUTTONS[] = {{{20, 120, 200, 160}, L"添加保单"
                                            {{20, 276, 200, 316}, L"保单列表", INS_LIST_POLICIES},
                                            {{20, 328, 200, 368}, L"新增理赔", INS_ADD_CLAIM},
                                            {{20, 380, 200, 420}, L"理赔列表", INS_LIST_CLAIMS},
-                                           {{20, 432, 200, 472}, L"审核理赔", INS_REVIEW_CLAIM},
-                                           {{20, 484, 200, 524}, L"结案理赔", INS_SETTLE_CLAIM},
-                                           {{20, 536, 95, 576}, L"上一页", INS_PREV},
-                                           {{125, 536, 200, 576}, L"下一页", INS_NEXT},
-                                           {{20, 588, 200, 628}, L"返回", INS_BACK}};
+                                           {{20, 432, 200, 472}, L"撤销理赔", INS_CANCEL_CLAIM},
+                                           {{20, 484, 200, 524}, L"审核理赔", INS_REVIEW_CLAIM},
+                                           {{20, 536, 200, 576}, L"结案理赔", INS_SETTLE_CLAIM},
+                                           {{20, 588, 95, 628}, L"上一页", INS_PREV},
+                                           {{125, 588, 200, 628}, L"下一页", INS_NEXT},
+                                           {{20, 640, 200, 680}, L"返回", INS_BACK}};
 
 /* 把一个保单转换成表格宽字符串；?: 根据布尔状态选择显示文字。 */
 static void format_policy_line(const Policy *policy, wchar_t *line, size_t count)
@@ -62,6 +63,8 @@ static const wchar_t *claim_status_text(int status)
         return L"已结案";
     case CLAIM_REJECTED:
         return L"已驳回";
+    case CLAIM_CANCELLED:
+        return L"已撤销";
     default:
         return L"待审核";
     }
@@ -274,6 +277,10 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
     char policy_id[24] = {0};
     char plate[10] = {0};
     char owner[20] = {0};
+    wchar_t policy_text[64] = {0}, plate_text[32] = {0}, owner_text[64] = {0};
+    wchar_t product_text[128] = {0}, confirm_message[512] = {0};
+    double coverage_limit;
+    double premium;
     if (!prompt_char_field(L"添加保单", L"请输入保单号：", policy_id, sizeof(policy_id), ""))
         return;
     if (!validate_string_len(policy_id, (int)sizeof(((Policy *)0)->policy_id)))
@@ -343,6 +350,27 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
     terms.end_date = end;
     terms.coverage_ratio = INSURANCE_PRODUCTS[choice - 1].coverage_ratio;
     terms.premium_multiplier = INSURANCE_PRODUCTS[choice - 1].premium_multiplier;
+
+    /* 按业务层相同公式预览保额和保费，让用户在真正添加前核对结果。 */
+    coverage_limit = car->purchase_price * terms.coverage_ratio;
+    if (coverage_limit <= 0.0)
+        coverage_limit = 5000.0;
+    premium = calculate_premium_for_car(car) * terms.premium_multiplier;
+    char_to_wchar(policy_id, policy_text, 64);
+    char_to_wchar(plate, plate_text, 32);
+    char_to_wchar(owner, owner_text, 64);
+    char_to_wchar(product_desc, product_text, 128);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"请核对即将添加的保单：\n\n保单号：%s    车牌：%s\n投保人：%s    产品：%s\n"
+                 L"保额：%.2f 元    保费：%.2f 元\n有效期：%04d-%02d-%02d 至 %04d-%02d-%02d",
+                 policy_text, plate_text, owner_text, product_text, coverage_limit, premium,
+                 start.year, start.month, start.day, end.year, end.month, end.day);
+    if (!show_confirm_dialog(L"确认添加保单", confirm_message, L"确认添加", 0))
+    {
+        set_message(state, L"已取消添加保单");
+        return;
+    }
+
     if (add_policy_for_current_user(ctx, policy_id, plate, owner, &terms))
     {
         save_policies(ctx);
@@ -359,8 +387,32 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
 static void handle_delete_policy(AppContext *ctx, GuiState *state)
 {
     char policy_id[24] = {0};
+    const Policy *policy;
+    wchar_t policy_text[64] = {0}, plate_text[32] = {0}, owner_text[64] = {0};
+    wchar_t confirm_message[512] = {0};
+
     if (!prompt_char_field(L"删除保单", L"请输入保单号：", policy_id, sizeof(policy_id), ""))
         return;
+    policy = find_visible_policy(ctx, policy_id);
+    if (!policy)
+    {
+        set_message(state, L"未找到该保单或无权删除");
+        return;
+    }
+
+    char_to_wchar(policy->policy_id, policy_text, 64);
+    char_to_wchar(policy->plate, plate_text, 32);
+    char_to_wchar(policy->owner, owner_text, 64);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"确定删除这份保单吗？\n\n保单号：%s\n关联车辆：%s    投保人：%s\n\n"
+                 L"警告：该保单关联的理赔记录也会被删除，此操作无法撤销。",
+                 policy_text, plate_text, owner_text);
+    if (!show_confirm_dialog(L"删除保单", confirm_message, L"确认删除", 1))
+    {
+        set_message(state, L"已取消删除保单");
+        return;
+    }
+
     if (remove_policy_for_current_user(ctx, policy_id))
     {
         save_policies(ctx);
@@ -401,6 +453,8 @@ static void handle_add_claim(AppContext *ctx, GuiState *state)
 {
     char claim_id[24] = {0}, policy_id[24] = {0}, desc[256] = {0}, claimant[20] = {0};
     double amount = 0.0;
+    wchar_t claim_text[64] = {0}, policy_text[64] = {0}, claimant_text[64] = {0};
+    wchar_t desc_text[256] = {0}, confirm_message[512] = {0};
     if (!prompt_char_field(L"新增理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), ""))
         return;
     if (!validate_string_len(claim_id, (int)sizeof(((Claim *)0)->claim_id)))
@@ -445,6 +499,21 @@ static void handle_add_claim(AppContext *ctx, GuiState *state)
     {
         copy_text(claimant, sizeof(claimant), ctx->current_user);
     }
+
+    char_to_wchar(claim_id, claim_text, 64);
+    char_to_wchar(policy_id, policy_text, 64);
+    char_to_wchar(claimant, claimant_text, 64);
+    char_to_wchar(desc, desc_text, 256);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"请核对即将提交的理赔：\n\n理赔号：%s    保单号：%s\n申请人：%s\n"
+                 L"申请金额：%.2f 元\n事故说明：%.80s",
+                 claim_text, policy_text, claimant_text, amount, desc_text);
+    if (!show_confirm_dialog(L"确认提交理赔", confirm_message, L"确认提交", 0))
+    {
+        set_message(state, L"已取消提交理赔");
+        return;
+    }
+
     if (add_claim_for_current_user(ctx, claim_id, policy_id, claimant, desc, amount))
     {
         save_claims(ctx);
@@ -457,6 +526,56 @@ static void handle_add_claim(AppContext *ctx, GuiState *state)
         set_message(state, L"提交理赔失败");
 }
 
+/*
+ * 撤销只允许作用于当前用户可见的待审核理赔。确认后业务层把状态改为
+ * CLAIM_CANCELLED，而不是删除记录，因此以后仍能在列表中查看申请历史。
+ */
+static void handle_cancel_claim(AppContext *ctx, GuiState *state)
+{
+    char claim_id[24] = {0};
+    const Claim *claim;
+    wchar_t claim_text[64] = {0}, confirm_message[512] = {0};
+
+    if (!prompt_char_field(L"撤销理赔", L"请输入要撤销的理赔单号：", claim_id,
+                           sizeof(claim_id), ""))
+        return;
+    claim = find_visible_claim(ctx, claim_id);
+    if (!claim)
+    {
+        set_message(state, L"未找到该理赔单或无权操作");
+        return;
+    }
+    if (claim->status != CLAIM_PENDING)
+    {
+        set_message(state, L"只有待审核理赔可以撤销");
+        return;
+    }
+
+    char_to_wchar(claim->claim_id, claim_text, 64);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"确定撤销理赔 %s 吗？\n\n申请金额：%.2f 元\n当前状态：待审核\n\n"
+                 L"撤销后不能重新审核，但申请记录会继续保留。",
+                 claim_text, claim->request_amount);
+    if (!show_confirm_dialog(L"撤销待审核理赔", confirm_message, L"确认撤销", 1))
+    {
+        set_message(state, L"已取消撤销理赔");
+        return;
+    }
+
+    if (cancel_claim_for_current_user(ctx, claim_id))
+    {
+        save_claims(ctx);
+        append_operation_log(ctx, "CANCEL_CLAIM", claim_id, "pending claim cancelled");
+        set_message(state, L"理赔已撤销，申请记录继续保留");
+        state->insurance_view = VIEW_CLAIM_LIST;
+        state->claim_page = 0;
+    }
+    else
+    {
+        set_message(state, L"撤销理赔失败");
+    }
+}
+
 /* 管理员审核一条待审核理赔，1 表示通过，0 表示驳回。 */
 static void handle_review_claim(AppContext *ctx, GuiState *state)
 {
@@ -464,6 +583,7 @@ static void handle_review_claim(AppContext *ctx, GuiState *state)
     char choice[8] = {0};
     const Claim *claim;
     int approve;
+    wchar_t claim_text[64] = {0}, confirm_message[512] = {0};
 
     if (!prompt_char_field(L"审核理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), ""))
         return;
@@ -493,6 +613,19 @@ static void handle_review_claim(AppContext *ctx, GuiState *state)
     }
 
     approve = choice[0] == '1';
+    char_to_wchar(claim->claim_id, claim_text, 64);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"确定将理赔 %s 标记为“%s”吗？\n\n申请金额：%.2f 元\n预计批准金额：%.2f 元\n\n"
+                 L"审核结果保存后不能再次审核。",
+                 claim_text, approve ? L"审核通过" : L"已驳回", claim->request_amount,
+                 claim->approved_amount);
+    if (!show_confirm_dialog(approve ? L"确认通过理赔" : L"确认驳回理赔", confirm_message,
+                             approve ? L"确认通过" : L"确认驳回", approve ? 0 : 1))
+    {
+        set_message(state, L"已取消审核理赔");
+        return;
+    }
+
     if (review_claim_for_current_user(ctx, claim_id, approve))
     {
         save_claims(ctx);
@@ -510,6 +643,7 @@ static void handle_settle_claim(AppContext *ctx, GuiState *state)
 {
     char claim_id[24] = {0};
     const Claim *claim;
+    wchar_t claim_text[64] = {0}, confirm_message[512] = {0};
 
     if (!prompt_char_field(L"结案理赔", L"请输入理赔单号：", claim_id, sizeof(claim_id), ""))
         return;
@@ -529,6 +663,17 @@ static void handle_settle_claim(AppContext *ctx, GuiState *state)
         set_message(state, L"该理赔尚未审核通过，不能结案");
         return;
     }
+    char_to_wchar(claim->claim_id, claim_text, 64);
+    _snwprintf_s(confirm_message, 512, _TRUNCATE,
+                 L"确定将理赔 %s 标记为已结案吗？\n\n申请金额：%.2f 元\n批准金额：%.2f 元\n\n"
+                 L"结案后不能重新审核，此操作不会发起真实转账。",
+                 claim_text, claim->request_amount, claim->approved_amount);
+    if (!show_confirm_dialog(L"确认理赔结案", confirm_message, L"确认结案", 1))
+    {
+        set_message(state, L"已取消理赔结案");
+        return;
+    }
+
     if (settle_claim_for_current_user(ctx, claim_id))
     {
         save_claims(ctx);
@@ -575,6 +720,9 @@ void handle_insurance_action(AppContext *ctx, GuiState *state, int action)
         state->insurance_view = VIEW_CLAIM_LIST;
         state->claim_page = 0;
         set_message(state, L"显示理赔列表");
+        break;
+    case INS_CANCEL_CLAIM:
+        handle_cancel_claim(ctx, state);
         break;
     case INS_REVIEW_CLAIM:
         handle_review_claim(ctx, state);

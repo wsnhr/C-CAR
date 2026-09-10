@@ -39,7 +39,7 @@ typedef struct Button
     int id;               /* 点击后交给事件处理函数的操作编号。 */
 } Button;
 
-/* enum 为整数常量取名；未指定值的成员会从前一项开始依次加 1。 */
+/* enum 为整数常量取名；未指定值的成员会从前一项开始依次加 1。 *///为什么不用宏
 typedef enum
 {
     SCREEN_HOME,
@@ -64,6 +64,7 @@ typedef enum
     CAR_LIST_ALL,
     CAR_LIST_MINE,
     CAR_FIND,
+    CAR_SORT,
     CAR_MODIFY,
     CAR_DELETE,
     CAR_PREV,
@@ -78,6 +79,7 @@ typedef enum
     INS_LIST_POLICIES,
     INS_ADD_CLAIM,
     INS_LIST_CLAIMS,
+    INS_CANCEL_CLAIM,
     INS_REVIEW_CLAIM,
     INS_SETTLE_CLAIM,
     INS_PREV,
@@ -95,14 +97,18 @@ typedef struct GuiState
 {
     Screen screen;                /* 当前一级页面。 */
     int car_page;                 /* 车辆页码，从 0 开始。 */
-    int policy_page;              /* 保单页码。 */
+    int policy_page;              /* 保单页码。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？总还是现在
     int claim_page;               /* 理赔页码。 */
     int car_show_mine;            /* 0=全部可见，1=只看本人。 */
+    int car_search_active;         /* 0=普通列表，1=按 car_search 筛选列表。 */
+    CarSearchCondition car_search; /* 车辆多条件查询的当前筛选值。 */
+    CarSortField car_sort_field;   /* 当前排序字段；0 表示保持登记顺序。 */
+    int car_sort_ascending;        /* 1=升序，0=降序；默认排序时忽略。 */
     InsuranceView insurance_view; /* 当前显示保单还是理赔。 */
     wchar_t message[512];         /* 底部提示消息缓冲区。 */
 } GuiState;
 
-/* 分页计算结果：page 为修正后的页码，start/end 为左闭右开下标范围。 */
+/* 分页计算结果：page 为修正后的页码，start/end 为左闭右开下标范围。 *////????????????????????下标
 typedef struct PageRange
 {
     int page;
@@ -111,16 +117,25 @@ typedef struct PageRange
     int end;
 } PageRange;
 
-/* 以下公共工具实现在 gui_common.c。dest_count/count 一般表示数组容量。 */
+/* 以下公共工具实现在 gui_common.c。dest_count/count 一般表示数组容量。 *///？？？？？？？？？？？？？？？？？？？能少一点吗
 void set_message(GuiState *state, const wchar_t *text);
 void char_to_wchar(const char *src, wchar_t *dest, int dest_count);
 void wchar_to_char(const wchar_t *src, char *dest, int dest_count);
 int prompt_char_field(const wchar_t *title, const wchar_t *prompt, char *dest, int dest_count,
                       const char *default_value);
+/* 与上面函数不同：用户确认空字符串也返回 1，供“留空表示不限”的查询框使用。 */
+int prompt_optional_char_field(const wchar_t *title, const wchar_t *prompt, char *dest,
+                               int dest_count, const char *default_value);
 int prompt_double_field(const wchar_t *title, const wchar_t *prompt, double *value,
                         double default_value);
 int prompt_date_field(const wchar_t *title, Date *date, const Date *current);
 int prompt_violation_field(const wchar_t *title, ViolationLevel *level, ViolationLevel current);
+/*
+ * 显示统一的 EasyX 确认框：确认返回 1，取消或点击框外返回 0。
+ * dangerous 非 0 时使用红色警告样式，否则使用蓝色普通确认样式。
+ */
+int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
+                        const wchar_t *confirm_label, int dangerous);
 const wchar_t *violation_to_text(ViolationLevel level);
 int point_in_rect(int x, int y, const RECT *rect);
 void draw_text_rect(const wchar_t *text, RECT rect, UINT format);

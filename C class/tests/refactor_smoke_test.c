@@ -20,9 +20,15 @@ int main(void)
 {
     AppContext ctx;
     Date purchase_date = {2024, 1, 15};
+    Date later_date = {2025, 6, 1};
     PolicyTerms terms = {"车损险", {2020, 1, 1}, {2030, 12, 31}, 0.8, 1.2};
     Car *car;
     AppContext loaded;
+    AppContext search_ctx;
+    AppContext auth_ctx;
+    CarSearchCondition condition;
+    int matching_indices[MAX_CARS] = {0};
+    int matching_count;
     FILE *legacy_file;
 
     init_app(&ctx);
@@ -48,6 +54,77 @@ int main(void)
         password_hash_matches("test-pass", "000102030405060708090a0b0c0d0e0f",
                               "eb177309970710aff1b7263d3f1bdddb763f1463e7fabdb8d032eda5978d670b"));
 
+    /* 连续五次错误会锁定账号；把时间改为 0 模拟锁定已经到期。 */
+    init_app(&auth_ctx);
+    assert(register_user_account(&auth_ctx, "locked-user", "right-pass", "LockUser",
+                                 "11010519491231002X"));
+    for (int attempt_number = 1; attempt_number < LOGIN_MAX_FAILURES; ++attempt_number)
+    {
+        int remaining = 0;
+        assert(login_user_account_guarded(&auth_ctx, "locked-user", "wrong-pass", &remaining,
+                                          NULL) == LOGIN_RESULT_WRONG_CREDENTIALS);
+        assert(remaining == LOGIN_MAX_FAILURES - attempt_number);
+    }
+    {
+        int seconds = 0;
+        assert(login_user_account_guarded(&auth_ctx, "locked-user", "wrong-pass", NULL,
+                                          &seconds) == LOGIN_RESULT_LOCKED);
+        assert(seconds == LOGIN_LOCK_SECONDS);
+        assert(login_user_account_guarded(&auth_ctx, "locked-user", "right-pass", NULL,
+                                          &seconds) == LOGIN_RESULT_LOCKED);
+    }
+    /* 时间点 1 早已过去，下一次调用会走“锁定到期并清零”的分支。 */
+    auth_ctx.login_attempts[0].locked_until = 1;
+    assert(login_user_account_guarded(&auth_ctx, "locked-user", "right-pass", NULL, NULL) ==
+           LOGIN_RESULT_SUCCESS);
+
+    /*
+     * 多条件查询测试：各关键字必须分别出现在车牌、品牌、型号和车主字段中，
+     * 违章还必须等于轻微。这样一次测试覆盖了全部五个查询条件。
+     * 结果数组保存的是 cars 原数组下标，因此可以再用该下标访问完整车辆。
+     */
+    init_app(&search_ctx);
+    assert(register_user_account(&search_ctx, "alice", "alice-pass", "Alice",
+                                 "11010519491231002X"));
+    assert(register_user_account(&search_ctx, "bob", "bob-pass", "Bob",
+                                 "11010519491231002X"));
+    assert(login_user_account(&search_ctx, "alice", "alice-pass"));
+    assert(add_car_for_current_user(&search_ctx, "A-100", "BYD", "Han", "alice",
+                                    VIOLATION_MINOR, purchase_date, 100000.0));
+    assert(login_user_account(&search_ctx, "bob", "bob-pass"));
+    assert(add_car_for_current_user(&search_ctx, "B-200", "BYD", "Song", "bob",
+                                    VIOLATION_NONE, later_date, 90000.0));
+    memset(&condition, 0, sizeof(condition));
+    strcpy(condition.plate_keyword, "A-");
+    strcpy(condition.brand_keyword, "BY");
+    strcpy(condition.model_keyword, "Ha");
+    strcpy(condition.owner_keyword, "lic");
+    condition.violation = VIOLATION_MINOR;
+    /* 普通用户 bob 无法看到 alice 的 A-100，所以结果为 0。 */
+    matching_count = collect_matching_car_indices(&search_ctx, 0, &condition, matching_indices,
+                                                  MAX_CARS);
+    assert(matching_count == 0);
+    assert(login_user_account(&search_ctx, "admin", "123456"));
+    matching_count = collect_matching_car_indices(&search_ctx, 0, &condition, matching_indices,
+                                                  MAX_CARS);
+    assert(matching_count == 1);
+    assert(strcmp(search_ctx.cars[matching_indices[0]].plate, "A-100") == 0);
+    /* 清空其他字段并取消违章限制后，只按品牌 "BY" 查询，两辆车都应匹配。 */
+    condition.plate_keyword[0] = '\0';
+    condition.model_keyword[0] = '\0';
+    condition.owner_keyword[0] = '\0';
+    condition.violation = CAR_VIOLATION_ANY;
+    matching_count = collect_matching_car_indices(&search_ctx, 0, &condition, matching_indices,
+                                                  MAX_CARS);
+    assert(matching_count == 2);
+    /* 排序只改变下标数组：价格升序和日期降序都是 B 在前，违章降序是 A 在前。 */
+    sort_car_indices(&search_ctx, matching_indices, matching_count, CAR_SORT_PRICE, 1);
+    assert(strcmp(search_ctx.cars[matching_indices[0]].plate, "B-200") == 0);
+    sort_car_indices(&search_ctx, matching_indices, matching_count, CAR_SORT_VIOLATION, 0);
+    assert(strcmp(search_ctx.cars[matching_indices[0]].plate, "A-100") == 0);
+    sort_car_indices(&search_ctx, matching_indices, matching_count, CAR_SORT_PURCHASE_DATE, 0);
+    assert(strcmp(search_ctx.cars[matching_indices[0]].plate, "B-200") == 0);
+
     assert(login_user_account(&ctx, "alice", "new-pass"));
     /* 普通用户即使请求 bob，也只能把车辆登记到自己名下。 */
     assert(add_car_for_current_user(&ctx, "A-100", "Brand", "Model", "bob", VIOLATION_NONE,
@@ -57,12 +134,18 @@ int main(void)
 
     assert(add_policy_for_current_user(&ctx, "P-100", "A-100", "alice", &terms));
     assert(add_claim_for_current_user(&ctx, "C-100", "P-100", "alice", "repair", 1000.0));
-    assert(ctx.policy_count == 1 && ctx.claim_count == 1);
+    assert(add_claim_for_current_user(&ctx, "C-CANCEL", "P-100", "alice", "cancel test",
+                                      500.0));
+    assert(ctx.policy_count == 1 && ctx.claim_count == 2);
     assert(ctx.claims[0].status == CLAIM_PENDING);
+    assert(cancel_claim_for_current_user(&ctx, "C-CANCEL"));
+    assert(ctx.claims[1].status == CLAIM_CANCELLED);
+    assert(!cancel_claim_for_current_user(&ctx, "C-CANCEL"));
     /* 普通用户无权审核或结案；管理员必须先审核通过再结案。 */
     assert(!review_claim_for_current_user(&ctx, "C-100", 1));
     assert(!settle_claim_for_current_user(&ctx, "C-100"));
     assert(login_user_account(&ctx, "admin", "123456"));
+    assert(!review_claim_for_current_user(&ctx, "C-CANCEL", 1));
     assert(review_claim_for_current_user(&ctx, "C-100", 1));
     assert(ctx.claims[0].status == CLAIM_APPROVED);
     assert(!review_claim_for_current_user(&ctx, "C-100", 0));
@@ -75,8 +158,9 @@ int main(void)
     assert(load_users(&loaded) && load_cars(&loaded) && load_policies(&loaded) &&
            load_claims(&loaded));
     assert(loaded.user_count == 2 && loaded.car_count == 1 && loaded.policy_count == 1 &&
-           loaded.claim_count == 1);
+           loaded.claim_count == 2);
     assert(loaded.claims[0].status == CLAIM_SETTLED);
+    assert(loaded.claims[1].status == CLAIM_CANCELLED);
     assert(strlen(loaded.users[0].identity_salt) == 32);
     assert(strlen(loaded.users[0].identity_hash) == 64);
     assert(login_user_account(&loaded, "alice", "new-pass"));
