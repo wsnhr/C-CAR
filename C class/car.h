@@ -13,8 +13,9 @@
 /*
  * 多条件查询使用的筛选结构体。
  * 每个字符串为空时表示“不限制该字段”；非空时使用“包含”关系匹配。
- * violation 为 CAR_VIOLATION_ANY 时不限制违章等级，否则应填写 ViolationLevel。
+ * vehicle_type 和 violation 等于各自的 ANY 常量时表示不限制该字段。
  */
+#define CAR_VEHICLE_TYPE_ANY (-1)
 #define CAR_VIOLATION_ANY (-1)
 typedef struct
 {
@@ -22,6 +23,7 @@ typedef struct
     char brand_keyword[20]; /* 品牌关键字。 */
     char model_keyword[20]; /* 型号关键字。 */
     char owner_keyword[20]; /* 车主用户名关键字。 */
+    int vehicle_type;       /* -1=不限，0~2 对应 VehicleType。 */
     int violation;          /* -1=不限，0~5 对应 ViolationLevel。 */
 } CarSearchCondition;
 
@@ -63,11 +65,13 @@ extern "C"
     /* 以下面向 GUI 的操作全部统一使用 1=成功、0=失败。 */
     int add_car_for_current_user(AppContext *ctx, const char *plate, const char *brand,
                                  const char *model, const char *requested_owner,
-                                 ViolationLevel violation, Date purchase_date,
+                                 VehicleType vehicle_type, ViolationLevel violation,
+                                 Date purchase_date,
                                  double purchase_price);
     int modify_car_for_current_user(AppContext *ctx, const char *plate, const char *new_brand,
-                                    const char *new_model, ViolationLevel new_violation,
-                                    Date new_purchase_date, double new_purchase_price);
+                                    const char *new_model, VehicleType new_vehicle_type,
+                                    ViolationLevel new_violation, Date new_purchase_date,
+                                    double new_purchase_price);
     int remove_car_for_current_user(AppContext *ctx, const char *plate);
 
     /* 用户级联删除使用的模块间接口；它会同步删除车辆关联的保险数据。 *///?????????????????????????????????????????????????????????????????????????????????

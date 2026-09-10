@@ -84,8 +84,8 @@ int load_users(AppContext *ctx)
 }
 /* ================= 车辆数据持久化 ================= */
 /*
- * 用 "w" 重建 cars.txt，再按数组顺序写出所有有效车辆。(int) 是强制类型
- * 转换，把 ViolationLevel 明确按整数写入文件。
+ * 用 "w" 重建 cars.txt，再按数组顺序写出所有有效车辆。车辆类型追加在旧格式
+ * 的末尾，因此旧版读取逻辑和已有数据的前九个字段仍保持原来的含义。
  */
 int save_cars(const AppContext *ctx)
 {
@@ -105,17 +105,19 @@ int save_cars(const AppContext *ctx)
 
     for (i = 0; i < ctx->car_count; i++)
     {
-        fprintf(fp, "%s %s %s %s %d %d %d %d %.2f\n", ctx->cars[i].plate, ctx->cars[i].brand,
+        fprintf(fp, "%s %s %s %s %d %d %d %d %.2f %d\n", ctx->cars[i].plate, ctx->cars[i].brand,
                 ctx->cars[i].model, ctx->cars[i].owner, (int)ctx->cars[i].violation,
                 ctx->cars[i].purchase_date.year, ctx->cars[i].purchase_date.month,
-                ctx->cars[i].purchase_date.day, ctx->cars[i].purchase_price);
+                ctx->cars[i].purchase_date.day, ctx->cars[i].purchase_price,
+                (int)ctx->cars[i].vehicle_type);
     }
 
     fclose(fp);
     return 1;
 }
 /*
- * 加载车辆，同时兼容“9 个字段”的新格式和“4 个字符串”的旧格式。
+ * 加载车辆，同时兼容三种格式：带车型的 10 字段格式、未带车型的 9 字段
+ * 格式和只有 4 个字符串的早期格式。旧记录统一按“小型车”处理。
  * 先用 fgets 读取完整一行，再用 sscanf 解析。这样新格式匹配失败时不会破坏
  * 文件位置，仍可用同一行尝试旧格式。
  *
@@ -143,16 +145,22 @@ int load_cars(AppContext *ctx)
     {
         /* 先读入临时结构体，确认一整条记录有效后再复制进 ctx 数组。 */
         Car tmp = {0};
-        int v;
+        int v, vehicle_type;
         int y, m, d;
         double price;
         int read_count;
 
-        /* 先尝试完整格式：4 个字符串、4 个整数和 1 个 double。 */
-        read_count = sscanf(line, "%9s %19s %19s %19s %d %d %d %d %lf", tmp.plate, tmp.brand,
-                            tmp.model, tmp.owner, &v, &y, &m, &d, &price);
-        if (read_count == 9)
+        /* 新字段放在行尾，使旧版九字段记录不会发生字段错位。 */
+        read_count = sscanf(line, "%9s %19s %19s %19s %d %d %d %d %lf %d", tmp.plate,
+                            tmp.brand, tmp.model, tmp.owner, &v, &y, &m, &d, &price,
+                            &vehicle_type);
+        if (read_count >= 9)
         {
+            tmp.vehicle_type = read_count == 10 &&
+                                       vehicle_type >= VEHICLE_TYPE_MOTORCYCLE &&
+                                       vehicle_type <= VEHICLE_TYPE_LARGE_CAR
+                                   ? (VehicleType)vehicle_type
+                                   : VEHICLE_TYPE_SMALL_CAR;
             tmp.violation = (v >= VIOLATION_NONE && v <= VIOLATION_SERIOUS) ? (ViolationLevel)v
                                                                             : VIOLATION_NONE;
             tmp.purchase_date.year = y;
@@ -164,7 +172,8 @@ int load_cars(AppContext *ctx)
         }
         else if (read_count >= 4)
         {
-            /* 旧格式没有违章、日期和价格；tmp 的零初始化正好提供这些默认值。 */
+            /* 最早格式没有车型、违章、日期和价格；车型仍按小型车兼容。 */
+            tmp.vehicle_type = VEHICLE_TYPE_SMALL_CAR;
             tmp.violation = VIOLATION_NONE;
             ctx->cars[ctx->car_count++] = tmp;
         }

@@ -34,8 +34,15 @@ extern "C"
      */
     int copy_text(char *dest, size_t capacity, const char *source);
 
-    /* plate 只能包含英文字母、数字和 '-'，并且必须能放入 Car.plate。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？
+    /*
+     * 新增车辆使用“字母-字母数字”的简化车牌格式，例如 A-12345。
+     * normalize_plate 会同时把小写字母转成大写并写入 dest。
+     */
     int validate_plate(const char *plate);
+    int normalize_plate(const char *plate, char *dest, size_t dest_capacity);
+
+    /* 查找和删除时允许读取项目早期保存的宽松格式，但仍拒绝特殊字符。 */
+    int validate_plate_key(const char *plate);
 
     /* max_length 是目标 char 数组总容量，已经包含末尾 '\0' 的位置。 */
     int validate_string_len(const char *text, int max_length);

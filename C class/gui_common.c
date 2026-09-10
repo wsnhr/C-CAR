@@ -590,6 +590,110 @@ const wchar_t *violation_to_text(ViolationLevel level)
     }
 }
 
+/* 把 VehicleType 枚举转换为界面上显示的中文名称。 */
+const wchar_t *vehicle_type_to_text(VehicleType type)
+{
+    switch (type)
+    {
+    case VEHICLE_TYPE_MOTORCYCLE:
+        return L"摩托车";
+    case VEHICLE_TYPE_LARGE_CAR:
+        return L"大型车";
+    default:
+        return L"小型车";
+    }
+}
+
+/*
+ * 显示车型选择框。VehicleType 的三个枚举值从 0 连续排列，所以按钮编号
+ * 可以直接转换为枚举值；确认前不会修改调用者传入的 type。
+ */
+int prompt_vehicle_type_field(const wchar_t *title, VehicleType *type, VehicleType current)
+{
+    const wchar_t *names[] = {L"摩托车", L"小型车", L"大型车"};
+    const int option_count = 3;
+    const int dialog_width = 520;
+    const int dialog_height = 190;
+    const int left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_width) / 2;
+    const int top = CONTENT_TOP + ((CONTENT_BOTTOM - CONTENT_TOP) - dialog_height) / 2;
+    const int right = left + dialog_width;
+    const int bottom = top + dialog_height;
+    const int button_width = 105;
+    const int button_height = 42;
+    const int spacing = 14;
+    const int total_width = 4 * button_width + 3 * spacing;
+    const int start_x = left + (dialog_width - total_width) / 2;
+    const int button_y = top + 112;
+    Button buttons[4];
+    RECT title_rect = {left + 18, top + 12, right - 18, top + 52};
+    RECT prompt_rect = {left + 18, top + 58, right - 18, top + 96};
+    ExMessage message;
+    int i;
+
+    if (!type || current < VEHICLE_TYPE_MOTORCYCLE || current > VEHICLE_TYPE_LARGE_CAR)
+        return 0;
+
+    setlinecolor(RGB(120, 130, 150));
+    setfillcolor(RGB(255, 255, 255));
+    solidrectangle(left, top, right, bottom);
+    setbkmode(TRANSPARENT);
+    settextstyle(22, 0, L"Microsoft YaHei UI");
+    settextcolor(RGB(35, 40, 50));
+    draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+    settextstyle(18, 0, L"Microsoft YaHei UI");
+    draw_text_rect(L"请选择车辆类型：", prompt_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
+
+    for (i = 0; i < option_count; ++i)
+    {
+        buttons[i].rect = {start_x + i * (button_width + spacing), button_y,
+                           start_x + i * (button_width + spacing) + button_width,
+                           button_y + button_height};
+        buttons[i].label = names[i];
+        buttons[i].id = i;
+        if (i == (int)current)
+        {
+            setfillcolor(RGB(230, 245, 255));
+            setlinecolor(RGB(100, 140, 180));
+            solidrectangle(buttons[i].rect.left, buttons[i].rect.top, buttons[i].rect.right,
+                           buttons[i].rect.bottom);
+            settextcolor(RGB(20, 60, 100));
+            draw_text_rect(buttons[i].label, buttons[i].rect,
+                           DT_CENTER | DT_VCENTER | DT_SINGLELINE);
+        }
+        else
+        {
+            draw_button(&buttons[i]);
+        }
+    }
+
+    buttons[3].rect = {start_x + 3 * (button_width + spacing), button_y,
+                       start_x + 3 * (button_width + spacing) + button_width,
+                       button_y + button_height};
+    buttons[3].label = L"取消";
+    buttons[3].id = -1;
+    draw_button(&buttons[3]);
+    FlushBatchDraw();
+
+    while (1)
+    {
+        if (peekmessage(&message, EM_MOUSE, 1) && message.message == WM_LBUTTONDOWN)
+        {
+            for (i = 0; i < 4; ++i)
+            {
+                if (!point_in_rect(message.x, message.y, &buttons[i].rect))
+                    continue;
+                if (buttons[i].id < 0)
+                    return 0;
+                *type = (VehicleType)buttons[i].id;
+                return 1;
+            }
+            if (message.x < left || message.x > right || message.y < top || message.y > bottom)
+                return 0;
+        }
+        Sleep(10);
+    }
+}
+
 /*
  * 绘制违章等级选择框。level 是输出指针，确认后把选中的整数枚举值写回。
  *

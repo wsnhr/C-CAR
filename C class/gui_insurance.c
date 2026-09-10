@@ -290,7 +290,7 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
     }
     if (!prompt_char_field(L"添加保单", L"请输入投保车牌：", plate, sizeof(plate), ""))
         return;
-    if (!validate_plate(plate))
+    if (!validate_plate_key(plate))
     {
         set_message(state, L"车牌格式不合法");
         return;
@@ -370,6 +370,8 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
         set_message(state, L"已取消添加保单");
         return;
     }
+    /* 后续确认框、保单和日志都使用车辆记录中的规范车牌。 */
+    copy_text(plate, sizeof(plate), car->plate);
 
     if (add_policy_for_current_user(ctx, policy_id, plate, owner, &terms))
     {

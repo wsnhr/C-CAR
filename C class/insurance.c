@@ -56,6 +56,40 @@ static int car_age_years(const Car *car)
 }
 
 /*
+ * 车型保费系数把车辆用途和通常维修成本纳入基础保费。小型车作为 1.0 基准；
+ * 摩托车价值通常较低，大型车事故风险和维修成本通常更高。
+ */
+static double vehicle_premium_factor(VehicleType type)
+{
+    switch (type)
+    {
+    case VEHICLE_TYPE_MOTORCYCLE:
+        return 0.80;
+    case VEHICLE_TYPE_LARGE_CAR:
+        return 1.40;
+    default:
+        return 1.00;
+    }
+}
+
+/*
+ * 不同车型使用不同的示例免赔比例。理赔仍然不能超过申请金额和保额；车型
+ * 只影响最终赔付比例，不会凭空提高保单约定的最高保障金额。
+ */
+static double vehicle_claim_deductible(VehicleType type)
+{
+    switch (type)
+    {
+    case VEHICLE_TYPE_MOTORCYCLE:
+        return 0.10;
+    case VEHICLE_TYPE_LARGE_CAR:
+        return 0.15;
+    default:
+        return 0.05;
+    }
+}
+
+/*
  计算保费的示例公式（年保费）
  说明（示例，便于替换）：
  - 基础费率 base_rate = 2.0% 的车价（即 0.02 * price）
@@ -108,7 +142,9 @@ double calculate_premium_for_car(const Car *car)
         break;
     }
 
-    double premium = price * base_rate * age_factor * violation_factor;
+    /* 最后乘车型因子：摩托车 0.80、小型车 1.00、大型车 1.40。 */
+    double premium =
+        price * base_rate * age_factor * violation_factor * vehicle_premium_factor(car->vehicle_type);
     if (premium < 100.0)
         premium = 100.0;
     return premium;
@@ -172,7 +208,9 @@ double calculate_payout_for_claim(const Policy *policy, const Car *car, double r
     if (age_penalty > 0.6)
         age_penalty = 0.6; // 年龄惩罚上限
 
-    double payout_ratio = 1.0 - violation_penalty - age_penalty;
+    /* 车型免赔比例：摩托车 10%、小型车 5%、大型车 15%。 */
+    double payout_ratio =
+        1.0 - violation_penalty - age_penalty - vehicle_claim_deductible(car->vehicle_type);
     if (payout_ratio < 0.2)
         payout_ratio = 0.2; // 最低20%可以赔付（示例）
     if (payout_ratio > 1.0)
@@ -252,7 +290,7 @@ static int add_policy(AppContext *ctx, const char *policy_id, const char *plate,
     double limit;
 
     if (!ctx || !validate_string_len(policy_id, (int)sizeof(ctx->policies[0].policy_id)) ||
-        !validate_plate(plate) ||
+        !validate_plate_key(plate) ||
         !validate_string_len(owner, (int)sizeof(ctx->policies[0].owner)) || !terms ||
         !validate_string_len(terms->description, (int)sizeof(ctx->policies[0].coverage_desc)) ||
         !date_is_valid(&terms->start_date) || !date_is_valid(&terms->end_date) ||
@@ -269,7 +307,8 @@ static int add_policy(AppContext *ctx, const char *policy_id, const char *plate,
     policy = &ctx->policies[ctx->policy_count];
     memset(policy, 0, sizeof(*policy));
     copy_text(policy->policy_id, sizeof(policy->policy_id), policy_id);
-    copy_text(policy->plate, sizeof(policy->plate), plate);
+    /* 使用车辆对象中的规范车牌，避免用户输入小写导致后续级联删除匹配失败。 */
+    copy_text(policy->plate, sizeof(policy->plate), car->plate);
     copy_text(policy->owner, sizeof(policy->owner), owner);
     copy_text(policy->coverage_desc, sizeof(policy->coverage_desc), terms->description);
     policy->start_date = terms->start_date;
