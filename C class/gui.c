@@ -64,7 +64,7 @@ void gui_run(AppContext *ctx)
             else if (state.screen == SCREEN_CARS)
                 action = hit_test_cars(ctx, msg.x, msg.y);
             else
-                action = hit_test_insurance(msg.x, msg.y);
+                action = hit_test_insurance(ctx, msg.x, msg.y);
             if (state.screen == SCREEN_HOME)
                 handle_home_action(ctx, &state, action, &running);
             else if (state.screen == SCREEN_CARS)

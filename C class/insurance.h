@@ -46,7 +46,7 @@ extern "C"
                                    double request_amount);
     int review_claim_for_current_user(AppContext *ctx, const char *claim_id, int approve);
     int settle_claim_for_current_user(AppContext *ctx, const char *claim_id);
-    /* 只有待审核理赔可以撤销；普通用户只能撤销本人记录。 */
+    /* 只有普通用户可撤销本人的待审核理赔；管理员不能代用户撤销。 */
     int cancel_claim_for_current_user(AppContext *ctx, const char *claim_id);
 
     /* 车辆/用户模块为维护跨实体关系而调用的模块间接口。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？？

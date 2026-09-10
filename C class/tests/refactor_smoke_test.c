@@ -45,6 +45,15 @@ int main(void)
     assert(register_user_account(&ctx, "alice", "alice-pass", "Alice", "11010519491231002X"));
     assert(register_user_account(&ctx, "bob", "bob-pass", "Bob", "11010519491231002X"));
     assert(!register_user_account(&ctx, "alice", "duplicate", "Alice", "11010519491231002X"));
+    assert(register_user_account_detailed(&ctx, "alice", "duplicate", "Alice",
+                                          "11010519491231002X") ==
+           REGISTER_RESULT_DUPLICATE_USERNAME);
+    assert(register_user_account_detailed(&ctx, "admin", "admin-pass", "Admin",
+                                          "11010519491231002X") ==
+           REGISTER_RESULT_RESERVED_USERNAME);
+    assert(register_user_account_detailed(&ctx, "new-user", "new-pass", "Invalid Name",
+                                          "11010519491231002X") ==
+           REGISTER_RESULT_INVALID_REAL_NAME);
     /* 内存中保存的是 32 位盐和 64 位哈希，不能与明文相同。 */
     assert(strlen(ctx.users[0].salt) == 32);
     assert(strlen(ctx.users[0].password) == 64);
@@ -186,6 +195,8 @@ int main(void)
     assert(!review_claim_for_current_user(&ctx, "C-100", 1));
     assert(!settle_claim_for_current_user(&ctx, "C-100"));
     assert(login_user_account(&ctx, "admin", "123456"));
+    /* 管理员负责审核和结案，不能撤销用户提交的待审核理赔。 */
+    assert(!cancel_claim_for_current_user(&ctx, "C-100"));
     assert(!review_claim_for_current_user(&ctx, "C-CANCEL", 1));
     assert(review_claim_for_current_user(&ctx, "C-100", 1));
     assert(ctx.claims[0].status == CLAIM_APPROVED);

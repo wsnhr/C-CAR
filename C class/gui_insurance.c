@@ -25,19 +25,47 @@ static const InsuranceProduct INSURANCE_PRODUCTS[] = {
 
 #define PRODUCT_COUNT ((int)(sizeof(INSURANCE_PRODUCTS) / sizeof(INSURANCE_PRODUCTS[0])))
 
-/* 保险页按钮只定义一次，绘制和命中检测共同使用。 */
-static const Button INSURANCE_BUTTONS[] = {{{20, 120, 200, 160}, L"添加保单", INS_ADD_POLICY},
-                                           {{20, 172, 200, 212}, L"删除保单", INS_DELETE_POLICY},
-                                           {{20, 224, 200, 264}, L"查询保单", INS_FIND_POLICY},
-                                           {{20, 276, 200, 316}, L"保单列表", INS_LIST_POLICIES},
-                                           {{20, 328, 200, 368}, L"新增理赔", INS_ADD_CLAIM},
-                                           {{20, 380, 200, 420}, L"理赔列表", INS_LIST_CLAIMS},
-                                           {{20, 432, 200, 472}, L"撤销理赔", INS_CANCEL_CLAIM},
-                                           {{20, 484, 200, 524}, L"审核理赔", INS_REVIEW_CLAIM},
-                                           {{20, 536, 200, 576}, L"结案理赔", INS_SETTLE_CLAIM},
-                                           {{20, 588, 95, 628}, L"上一页", INS_PREV},
-                                           {{125, 588, 200, 628}, L"下一页", INS_NEXT},
-                                           {{20, 640, 200, 680}, L"返回", INS_BACK}};
+/*
+ * 普通用户和管理员拥有不同的理赔操作权限，因此分别定义两组按钮：
+ * 普通用户只能撤销自己的待审核理赔；管理员只能审核和结案，不能代用户撤销。
+ * 绘制与点击检测必须取得同一组数组，否则隐藏按钮所在区域仍可能被点击。
+ */
+static const Button USER_INSURANCE_BUTTONS[] = {
+    {{20, 120, 200, 160}, L"添加保单", INS_ADD_POLICY},
+    {{20, 172, 200, 212}, L"删除保单", INS_DELETE_POLICY},
+    {{20, 224, 200, 264}, L"查询保单", INS_FIND_POLICY},
+    {{20, 276, 200, 316}, L"保单列表", INS_LIST_POLICIES},
+    {{20, 328, 200, 368}, L"新增理赔", INS_ADD_CLAIM},
+    {{20, 380, 200, 420}, L"理赔列表", INS_LIST_CLAIMS},
+    {{20, 432, 200, 472}, L"撤销理赔", INS_CANCEL_CLAIM},
+    {{20, 484, 95, 524}, L"上一页", INS_PREV},
+    {{125, 484, 200, 524}, L"下一页", INS_NEXT},
+    {{20, 536, 200, 576}, L"返回", INS_BACK}};
+
+static const Button ADMIN_INSURANCE_BUTTONS[] = {
+    {{20, 120, 200, 160}, L"添加保单", INS_ADD_POLICY},
+    {{20, 172, 200, 212}, L"删除保单", INS_DELETE_POLICY},
+    {{20, 224, 200, 264}, L"查询保单", INS_FIND_POLICY},
+    {{20, 276, 200, 316}, L"保单列表", INS_LIST_POLICIES},
+    {{20, 328, 200, 368}, L"新增理赔", INS_ADD_CLAIM},
+    {{20, 380, 200, 420}, L"理赔列表", INS_LIST_CLAIMS},
+    {{20, 432, 200, 472}, L"审核理赔", INS_REVIEW_CLAIM},
+    {{20, 484, 200, 524}, L"结案理赔", INS_SETTLE_CLAIM},
+    {{20, 536, 95, 576}, L"上一页", INS_PREV},
+    {{125, 536, 200, 576}, L"下一页", INS_NEXT},
+    {{20, 588, 200, 628}, L"返回", INS_BACK}};
+
+/* 根据当前登录角色返回需要显示的按钮数组，并通过 count 返回数组长度。 */
+static const Button *insurance_buttons_for_context(const AppContext *ctx, int *count)
+{
+    if (app_is_admin(ctx))
+    {
+        *count = (int)(sizeof(ADMIN_INSURANCE_BUTTONS) / sizeof(ADMIN_INSURANCE_BUTTONS[0]));
+        return ADMIN_INSURANCE_BUTTONS;
+    }
+    *count = (int)(sizeof(USER_INSURANCE_BUTTONS) / sizeof(USER_INSURANCE_BUTTONS[0]));
+    return USER_INSURANCE_BUTTONS;
+}
 
 /* 把一个保单转换成表格宽字符串；?: 根据布尔状态选择显示文字。 */
 static void format_policy_line(const Policy *policy, wchar_t *line, size_t count)
@@ -91,13 +119,14 @@ static void format_claim_line(const Claim *claim, wchar_t *line, size_t count)
 void draw_insurance(const AppContext *ctx, const GuiState *state)
 {
     int i;
-    int button_count = (int)(sizeof(INSURANCE_BUTTONS) / sizeof(INSURANCE_BUTTONS[0]));
+    int button_count;
+    const Button *buttons = insurance_buttons_for_context(ctx, &button_count);
 
     draw_title(L"保单与理赔管理");
     draw_status(ctx);
     draw_message_box(state);
     for (i = 0; i < button_count; ++i)
-        draw_button(&INSURANCE_BUTTONS[i]);
+        draw_button(&buttons[i]);
     draw_content_panel();
 
     if (state->insurance_view == VIEW_POLICY_LIST)
@@ -724,13 +753,22 @@ void handle_insurance_action(AppContext *ctx, GuiState *state, int action)
         set_message(state, L"显示理赔列表");
         break;
     case INS_CANCEL_CLAIM:
-        handle_cancel_claim(ctx, state);
+        if (app_is_admin(ctx))
+            set_message(state, L"管理员不能撤销用户提交的理赔");
+        else
+            handle_cancel_claim(ctx, state);
         break;
     case INS_REVIEW_CLAIM:
-        handle_review_claim(ctx, state);
+        if (app_is_admin(ctx))
+            handle_review_claim(ctx, state);
+        else
+            set_message(state, L"只有管理员可以审核理赔");
         break;
     case INS_SETTLE_CLAIM:
-        handle_settle_claim(ctx, state);
+        if (app_is_admin(ctx))
+            handle_settle_claim(ctx, state);
+        else
+            set_message(state, L"只有管理员可以结案理赔");
         break;
     case INS_PREV:
         if (*page > 0)
@@ -749,9 +787,10 @@ void handle_insurance_action(AppContext *ctx, GuiState *state, int action)
     }
 }
 
-/* 用与绘制页面相同的矩形判断点击，并返回对应操作编号。 */
-int hit_test_insurance(int x, int y)
+/* 使用与当前角色绘制时相同的按钮数组，隐藏的操作不会参与点击检测。 */
+int hit_test_insurance(const AppContext *ctx, int x, int y)
 {
-    return hit_test_buttons(INSURANCE_BUTTONS,
-                            (int)(sizeof(INSURANCE_BUTTONS) / sizeof(INSURANCE_BUTTONS[0])), x, y);
+    int button_count;
+    const Button *buttons = insurance_buttons_for_context(ctx, &button_count);
+    return hit_test_buttons(buttons, button_count, x, y);
 }
