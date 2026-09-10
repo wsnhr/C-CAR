@@ -502,7 +502,7 @@ static void handle_delete_policy(AppContext *ctx, GuiState *state)
         set_message(state, L"删除保单失败");
 }
 
-/* 使用 find_visible_policy 查询，未授权的记录与不存在的记录都显示“未找到”。 */
+/* 查询结果同时显示保单基本信息和生效日期，便于用户核对起保时间。 */
 static void handle_find_policy(AppContext *ctx, GuiState *state)
 {
     char policy_id[24] = {0};
@@ -520,9 +520,11 @@ static void handle_find_policy(AppContext *ctx, GuiState *state)
     char_to_wchar(policy->owner, owner_t, 64);
     char_to_wchar(policy->coverage_desc, desc_t, 96);
     _snwprintf_s(message, 512, _TRUNCATE,
-                 L"保单:%s 车牌:%s 投保人:%s 保额:%.2f 保费:%.2f 状态:%s 描述:%s", id_t, plate_t,
-                 owner_t, policy->coverage_limit, policy->premium,
-                 policy->active ? L"有效" : L"失效", desc_t);
+                 L"保单:%s  车牌:%s  投保人:%s  保额:%.2f  保费:%.2f  状态:%s\n"
+                 L"生效日期:%04d-%02d-%02d  描述:%s",
+                 id_t, plate_t, owner_t, policy->coverage_limit, policy->premium,
+                 policy->active ? L"有效" : L"失效", policy->start_date.year,
+                 policy->start_date.month, policy->start_date.day, desc_t);
     set_message(state, message);
 }
 
