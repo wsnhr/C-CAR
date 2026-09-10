@@ -166,6 +166,6 @@ int hit_test_cars(const AppContext *ctx, int x, int y);
 
 void draw_insurance(const AppContext *ctx, const GuiState *state);
 void handle_insurance_action(AppContext *ctx, GuiState *state, int action);
-int hit_test_insurance(int x, int y);
+int hit_test_insurance(const AppContext *ctx, int x, int y);
 
 #endif
