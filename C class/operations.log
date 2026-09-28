@@ -47,3 +47,29 @@
 2026-09-10 23:20:53 | user=admin | action=LOGIN | target=admin | details=user login
 2026-09-10 23:20:58 | user=admin | action=LOGOUT | target=admin | details=user logout
 2026-09-10 23:21:03 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 19:37:36 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-11 19:37:44 | user=admin | action=DELETE_USER | target=nhr | details=user removed with related data
+2026-09-11 20:48:49 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-11 21:29:30 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-11 21:29:54 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-11 22:49:37 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-11 22:50:14 | user=admin | action=LOGOUT | target=admin | details=user logout
+2026-09-11 22:50:47 | user=(none) | action=ADD_USER | target=nhr | details=registered
+2026-09-11 22:50:54 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 22:51:28 | user=nhr | action=ADD_CAR | target=¾©A12345 | details=nhr
+2026-09-11 22:53:34 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 22:59:56 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-11 23:00:12 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 23:04:09 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 23:05:02 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 23:34:39 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-11 23:34:57 | user=nhr | action=ADD_POLICY | target=1 | details=³µËðÏÕ
+2026-11-11 23:36:08 | user=admin | action=LOGIN | target=admin | details=user login
+2026-11-11 23:36:26 | user=admin | action=LOGOUT | target=admin | details=user logout
+2026-11-11 23:36:32 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-11-11 23:36:43 | user=nhr | action=ADD_CLAIM | target=1 | details=1
+2026-11-11 23:36:45 | user=nhr | action=LOGOUT | target=nhr | details=user logout
+2026-11-11 23:36:52 | user=admin | action=LOGIN | target=admin | details=user login
+2026-11-11 23:38:09 | user=admin | action=REVIEW_CLAIM | target=1 | details=approved
+2026-11-11 23:39:40 | user=admin | action=LOGIN | target=admin | details=user login
+2026-11-11 23:39:54 | user=admin | action=SETTLE_CLAIM | target=1 | details=settled by admin

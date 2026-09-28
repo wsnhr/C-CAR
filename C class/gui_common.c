@@ -11,10 +11,12 @@
 /* 安全更新底部消息；text 为 NULL 时清空。_TRUNCATE 表示过长就截断。 */
 void set_message(GuiState *state, const wchar_t *text)
 {
+    /* state 为空时没有可写目标，立即返回可避免访问 state->message 崩溃。 */
     if (!state)
         return;
     if (text)
     {
+        /* wcsncpy_s 是带容量的宽字符串复制；_TRUNCATE 允许安全截断长提示。 */
         wcsncpy_s(state->message, 512, text, _TRUNCATE);
     }
     else
@@ -35,7 +37,9 @@ static void draw_confirm_button(const RECT *rect, const wchar_t *label, int prim
     COLORREF text;
     RECT text_rect;
 
-    if (primary)
+    /* primary 决定“确认/取消”的视觉层级；dangerous 只在确认按钮上把蓝色
+       换成红色。这里仅影响绘制，不改变点击后的返回值。 */
+    if (primary)//红蓝，浅
     {
         fill = dangerous ? RGB(220, 70, 70) : RGB(59, 130, 246);
         border = dangerous ? RGB(190, 55, 55) : RGB(37, 99, 235);
@@ -54,6 +58,7 @@ static void draw_confirm_button(const RECT *rect, const wchar_t *label, int prim
     setbkmode(TRANSPARENT);
     settextstyle(17, 0, L"Microsoft YaHei UI");
     settextcolor(text);
+    /* RECT 是普通结构体，赋值会复制四个边界值；draw_text_rect 不会改原 rect。 */
     text_rect = *rect;
     draw_text_rect(label, text_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
 }
@@ -67,8 +72,9 @@ static void draw_confirm_button(const RECT *rect, const wchar_t *label, int prim
  * 被遮罩覆盖的画面。
  */
 int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
-                        const wchar_t *confirm_label, int dangerous)
+	const wchar_t* confirm_label, int dangerous)//参数为内容，危险操作为红色
 {
+    /* 先由固定宽高计算中心位置；后面的所有文字和按钮坐标均相对此面板。 */
     const int dialog_width = 560;
     const int dialog_height = 360;
     const int left = (WINDOW_WIDTH - dialog_width) / 2;
@@ -81,6 +87,7 @@ int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
     RECT confirm_rect;
     ExMessage event;
 
+    /* 调用者允许把三个文字参数传 NULL，此处替换为可显示的默认宽字符串。 */
     if (!title)
         title = L"请确认操作";
     if (!message)
@@ -113,7 +120,7 @@ int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
     setbkmode(TRANSPARENT);
     settextstyle(25, 0, L"Microsoft YaHei UI");
     settextcolor(RGB(30, 41, 59));
-    draw_text_rect(title, title_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+    draw_text_rect(title, title_rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);//常规title
 
     setlinecolor(RGB(226, 232, 240));
     line(left + 24, top + 82, right - 24, top + 82);
@@ -124,7 +131,7 @@ int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
     message_rect.bottom = bottom - 88;
     settextstyle(16, 0, L"Microsoft YaHei UI");
     settextcolor(dangerous ? RGB(127, 29, 29) : RGB(51, 65, 85));
-    draw_text_rect(message, message_rect, DT_LEFT | DT_TOP | DT_WORDBREAK);
+    draw_text_rect(message, message_rect, DT_LEFT | DT_TOP | DT_WORDBREAK);//常规message
 
     cancel_rect.left = right - 276;
     cancel_rect.top = bottom - 66;
@@ -138,6 +145,7 @@ int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
     draw_confirm_button(&confirm_rect, confirm_label, 1, dangerous);
     FlushBatchDraw();
 
+    /* 模态事件循环只接受本对话框点击：确认返回 1，取消或点框外返回 0。 */
     while (1)
     {
         if (peekmessage(&event, EM_MOUSE, 1) && event.message == WM_LBUTTONDOWN)
@@ -150,6 +158,7 @@ int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
             if (event.x < left || event.x > right || event.y < top || event.y > bottom)
                 return 0;
         }
+        /* 没有消息时暂停 10ms，避免持续轮询占满 CPU。 */
         Sleep(10);
     }
 }
@@ -160,6 +169,7 @@ int show_confirm_dialog(const wchar_t *title, const wchar_t *message,
  */
 void char_to_wchar(const char *src, wchar_t *dest, int dest_count)
 {
+    /* 目标无效时无法报告错误，因此直接返回；调用者应始终传真实数组容量。 */
     if (!dest || dest_count <= 0)
         return;
     if (!src)
@@ -167,6 +177,8 @@ void char_to_wchar(const char *src, wchar_t *dest, int dest_count)
         dest[0] = L'\0';
         return;
     }
+    /* CP_ACP 使用当前 Windows 系统代码页；-1 表示连同源字符串末尾 '\0'
+       一起转换。最后一行是额外保险，保证目标一定终止。 */
     MultiByteToWideChar(CP_ACP, 0, src, -1, dest, dest_count);
     dest[dest_count - 1] = L'\0';
 }
@@ -185,29 +197,48 @@ void wchar_to_char(const wchar_t *src, char *dest, int dest_count)
     dest[dest_count - 1] = '\0';
 }
 
-/* EasyX InputBox 的内部薄包装；确认返回非 0，取消返回 0。 */
+/*
+ * EasyX InputBox 的内部统一入口。
+ *
+ * title 是窗口标题，prompt 是问题文字，buffer/count 是接收输入的宽字符数组
+ * 及其容量，default_value 是输入框初始内容。成功确认返回非 0，取消返回 0。
+ * static 表示只供本文件的各种 prompt_* 函数复用，不暴露给其他模块。
+ */
 static int prompt_text(const wchar_t *title, const wchar_t *prompt, wchar_t *buffer, int count,
                        const wchar_t *default_value)
 {
+    /* InputBox 要向 buffer 写数据，所以先检查地址和容量，避免无效写入。 */
     if (!buffer || count <= 0)
         return 0;
+    /* 即使 InputBox 失败，调用者也只会看到空字符串而不是旧内存内容。 */
     buffer[0] = L'\0';
-    /* InputBox 为 EasyX 提供的对话框函数，返回非0表示用户确认 */
+    /* ?: 在 default_value 为 NULL 时改传空宽字符串，避免把空指针交给 EasyX。 */
     return InputBox(buffer, count, prompt, title, default_value ? default_value : L"");
 }
 
-/* 用宽字符输入框收集文本，确认后转换为普通 char 字符串。 */
+/*
+ * 收集一个必填的 char 字符串。
+ *
+ * EasyX 只直接处理 wchar_t，所以先用 text 接收宽字符，再转换到业务层的
+ * dest。dest_count 是调用者目标数组容量。返回 1 表示得到了非空结果；取消、
+ * 空输入或转换后为空都返回 0。函数不负责用户名等具体业务规则校验。
+ */
 int prompt_char_field(const wchar_t *title, const wchar_t *prompt, char *dest, int dest_count,
                       const char *default_value)
 {
+    /* text 接收新输入，initial 保存默认值；分开可避免 InputBox 覆盖默认值。 */
     wchar_t text[256] = {0};
     wchar_t initial[256] = {0};
+    /* 业务层默认值是 char，显示前要转成 EasyX 使用的 wchar_t。 */
     if (default_value)
         char_to_wchar(default_value, initial, 256);
+    /* ! 把“确认时的非 0”取反成假，把“取消时的 0”取反成真并提前返回。 */
     if (!prompt_text(title, prompt, text, 256, initial))
         return 0;
+    /* 本接口代表必填字段，所以用户确认一个空字符串也视为没有有效输入。 */
     if (text[0] == L'\0')
         return 0;
+    /* 转换函数会遵守 dest_count，并在最后补 '\0'。 */
     wchar_to_char(text, dest, dest_count);
     return dest[0] != '\0';
 }
@@ -262,24 +293,24 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
                                int small_group_w, int group_h, int y_top, int group_total1,
                                int group_total2, int start_x, Button *btns)
 {
-    // background
+    /* 先重画对话框背景；日期改变后函数会再次调用，所以旧数字会被覆盖。 */
     setlinecolor(RGB(120, 130, 150));
     setfillcolor(RGB(255, 255, 255));
     solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
-    // title
+    /* 标题区域。 */
     settextstyle(22, 0, L"Segoe UI");
     settextcolor(RGB(35, 40, 50));
     RECT title_rect = {dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48};
     draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
-    // description
+    /* 操作说明区域。 */
     settextstyle(18, 0, L"Segoe UI");
     RECT desc_rect = {dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 78};
     draw_text_rect(L"请选择日期：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    // YEAR group
+    /* 年份组从 start_x 开始，由“减号、数值、加号”三个区域组成。 */
     int gx = start_x;
     int gy = y_top;
-    // year minus
+    /* 年份减号按钮，id=1 供事件循环识别。 */
     btns[0].rect.left = gx;
     btns[0].rect.top = gy;
     btns[0].rect.right = gx + side_w;
@@ -287,7 +318,7 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
     btns[0].label = L"-";
     btns[0].id = 1;
     draw_button(&btns[0]);
-    // year value box
+    /* 年份数值不是按钮，只负责显示当前 year。 */
     RECT yr_rect = {gx + side_w + gap_to_value, gy, gx + side_w + gap_to_value + group_w,
                     gy + group_h};
     wchar_t tmp[64];
@@ -295,7 +326,7 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
     settextstyle(20, 0, L"Segoe UI");
     settextcolor(RGB(35, 40, 50));
     draw_text_rect(tmp, yr_rect, DT_CENTER | DT_VCENTER | DT_SINGLELINE);
-    // year plus
+    /* 年份加号按钮，id=2。 */
     btns[1].rect.left = yr_rect.right + gap_after_value;
     btns[1].rect.top = gy;
     btns[1].rect.right = btns[1].rect.left + side_w;
@@ -304,10 +335,10 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
     btns[1].id = 2;
     draw_button(&btns[1]);
 
-    // 移动到月份按钮组，并保留组间距，避免与年份按钮重叠。
+    /* 横坐标越过完整年份组，再留 spacing 像素进入月份组。 */
     gx = gx + group_total1 + spacing;
 
-    // MONTH group
+    /* 月份组使用 id=3 和 id=4 分别表示减少与增加。 */
     btns[2].rect.left = gx;
     btns[2].rect.top = gy;
     btns[2].rect.right = gx + side_w;
@@ -328,10 +359,10 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
     btns[3].id = 4;
     draw_button(&btns[3]);
 
-    // move to day group
+    /* 横坐标继续移动到日期组。 */
     gx = gx + group_total2 + spacing;
 
-    // DAY group
+    /* 日期组使用 id=5 和 id=6。 */
     btns[4].rect.left = gx;
     btns[4].rect.top = gy;
     btns[4].rect.right = gx + side_w;
@@ -352,7 +383,7 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
     btns[5].id = 6;
     draw_button(&btns[5]);
 
-    // confirm / cancel
+    /* 确定 id=7；取消 id=0，事件循环用这两个值区分提交和放弃。 */
     int bw = 120;
     int bh = 44;
     btns[6].rect.left = dlg_left + dialog_w - bw - 36;
@@ -383,6 +414,8 @@ static void redraw_date_dialog(const wchar_t *title, int year, int month, int da
 static void clamp_date_range(int *year, int *month, int *day, const Date *min_date,
                              const Date *max_date)
 {
+    /* year/month/day 是三个输出指针。先组合临时 Date 便于复用统一比较函数；
+       超界时再通过 *year 等写回调用者的实际变量。 */
     Date d;
     d.year = *year;
     d.month = *month;
@@ -404,9 +437,11 @@ static void clamp_date_range(int *year, int *month, int *day, const Date *min_da
 int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *current,
                               const Date *min_date, const Date *max_date)
 {
+    /* date 是最终输出地址，NULL 时无法写回选择结果。 */
     if (!date)
         return 0;
     int year, month, day;
+    /* 有 current 就复制为初始选择；否则把系统 struct tm 转为正常公历年月日。 */
     if (current)
     {
         year = current->year;
@@ -434,11 +469,12 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
         month = 1;
     if (month > 12)
         month = 12;
+    /* 年月修正后再限制日，尤其处理 2 月和大小月。 */
     int dim = date_days_in_month(year, month);
     if (day < 1)
         day = 1;
     if (day > dim)
-        day = dim;
+        day = dim;//到此为修正
     clamp_date_range(&year, &month, &day, min_date, max_date);
 
     int dialog_w = 520;
@@ -448,24 +484,23 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
     int dlg_right = dlg_left + dialog_w;
     int dlg_bottom = dlg_top + dialog_h;
 
-    // 日期按钮组的布局参数。
-    const int side_w = 36;                 // 单侧按钮宽度（+/-）
-    const int gap_to_value = 6;            // 侧钮到数值框的空隙
-    const int gap_after_value = 8;         // 数值框到侧钮的空隙
-    const int spacing = 18;                // 组间间隔
-    const int group_w = 120;               // 年组数值框宽
-    const int small_group_w = group_w / 2; // 月/日组数值框宽
+    /* 日期按钮组布局：每一组由减号、数值框、加号组成。 */
+    const int side_w = 36;                 /* 单侧加减按钮宽度。 */
+    const int gap_to_value = 6;            /* 减号到数值框的空隙。 */
+    const int gap_after_value = 8;         /* 数值框到加号的空隙。 */
+    const int spacing = 18;                /* 年、月、日三组之间的间隔。 */
+    const int group_w = 120;               /* 年份数值框宽度。 */
+    const int small_group_w = group_w / 2; /* 月、日数值框宽度。 */
     const int group_h = 48;
     int y_top = dlg_top + 70;
 
-    // 计算年、月、日三组控件总宽度并整体居中。
+    /* 计算年、月、日三组控件总宽度，再把整组控件水平居中。 */
     int group_total1 = side_w + gap_to_value + group_w + gap_after_value + side_w;
     int group_total2 = side_w + gap_to_value + small_group_w + gap_after_value + side_w;
     int group_total3 = group_total2;
     int groups_total = group_total1 + group_total2 + group_total3 + spacing * 2;
     int start_x = dlg_left + (dialog_w - groups_total) / 2;
 
-    // button areas
     /* 八个按钮依次为年-/年+/月-/月+/日-/日+/确定/取消。 */
     Button btns[8];
     for (int i = 0; i < 8; ++i)
@@ -475,12 +510,10 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
         btns[i].rect.left = btns[i].rect.top = btns[i].rect.right = btns[i].rect.bottom = 0;
     }
 
-    // 使用同一组布局参数完成首次绘制和每次点击后的重绘。
-
-    // 初次绘制
+    /* 首次绘制与每次数字变化后的重绘共用同一函数，避免坐标计算不一致。 */
     redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right, dlg_bottom, dialog_w,
                        side_w, gap_to_value, gap_after_value, spacing, group_w, small_group_w,
-                       group_h, y_top, group_total1, group_total2, start_x, btns);
+                       group_h, y_top, group_total1, group_total2, start_x, btns);//会给id
 
     ExMessage msg;
     while (1)
@@ -488,16 +521,16 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
         if (peekmessage(&msg, EM_MOUSE, 1) && msg.message == WM_LBUTTONDOWN)
         {
             int mx = msg.x, my = msg.y;
-            // check buttons
+            /* 顺序检查八个按钮；id 为 1~7 的按钮在此处理，取消按钮单独处理。 */
             for (int i = 0; i < 8; ++i)
             {
                 if (btns[i].id == 0)
-                    continue; // skip empty / cancel uses id 0 so skip here, will handle separately
+                    continue; /* id=0 是取消，在循环后单独判断其矩形。 */
                 if (point_in_rect(mx, my, &btns[i].rect))
                 {
                     int id = btns[i].id;
                     if (id == 1)
-                    { // year -
+                    { /* 年减一 */
                         if (year > 1900)
                             year--;
                         if (year < 1900)
@@ -505,7 +538,7 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
                             day = dim2;
-                        clamp_date_range(&year, &month, &day, min_date, max_date);
+						clamp_date_range(&year, &month, &day, min_date, max_date);//这里调用一次，直接把 year month day 限制在范围内
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
                                            gap_after_value, spacing, group_w, small_group_w,
@@ -514,7 +547,7 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         continue;
                     }
                     else if (id == 2)
-                    { // year +
+                    { /* 年加一 */
                         if (year < 3000)
                             year++;
                         if (year > 3000)
@@ -531,7 +564,7 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         continue;
                     }
                     else if (id == 3)
-                    { // month -
+                    { /* 月减一；1 月再减会循环到 12 月。 */
                         month = month > 1 ? month - 1 : 12;
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
@@ -545,8 +578,8 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         continue;
                     }
                     else if (id == 4)
-                    { // month +
-                        month = month < 12 ? month + 1 : 1;
+                    { /* 月加一；12 月再加会循环到 1 月。 */
+                        month = month < 12 ?       month + 1 : 1;
                         int dim2 = date_days_in_month(year, month);
                         if (day > dim2)
                             day = dim2;
@@ -559,8 +592,8 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         continue;
                     }
                     else if (id == 5)
-                    { // day -
-                        day = day > 1 ? day - 1 : date_days_in_month(year, month);
+                    { /* 日减一；每月 1 日再减会循环到本月末日。 */
+                        day = day > 1 ?          day - 1 : date_days_in_month(year, month);
                         clamp_date_range(&year, &month, &day, min_date, max_date);
                         redraw_date_dialog(title, year, month, day, dlg_left, dlg_top, dlg_right,
                                            dlg_bottom, dialog_w, side_w, gap_to_value,
@@ -570,7 +603,7 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         continue;
                     }
                     else if (id == 6)
-                    { // day +
+                    { /* 日加一；本月末日再加会循环到 1 日。 */
                         int dim2 = date_days_in_month(year, month);
                         day = day < dim2 ? day + 1 : 1;
                         clamp_date_range(&year, &month, &day, min_date, max_date);
@@ -582,7 +615,7 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                         continue;
                     }
                     else if (id == 7)
-                    { // confirm
+                    { /* 确认：通过 date 指针把三个局部值写回调用者。 */
                         date->year = year;
                         date->month = month;
                         date->day = day;
@@ -590,12 +623,13 @@ int prompt_date_field_bounded(const wchar_t *title, Date *date, const Date *curr
                     }
                 }
             }
-            // 处理取消按钮（id == 0）或点击对话框外部视为取消
+            /* 取消按钮 id 为 0，或点击对话框外部，都返回 0 且不修改 *date。 */
             if (point_in_rect(mx, my, &btns[7].rect))
                 return 0;
             if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom)
                 return 0;
         }
+        /* 没有消息时让出 CPU；这不会影响选中的日期数值。 */
         Sleep(10);
     }
 }
@@ -740,7 +774,7 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
     const wchar_t *names[] = {L"无", L"较轻微", L"轻微", L"中等", L"较严重", L"严重"};
     const int count = 6;
 
-    // dialog dimensions
+    /* 对话框固定大小，并在内容区域中居中。 */
     int dialog_w = 480;
     int dialog_h = 200;
     int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
@@ -748,7 +782,7 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
     int dlg_right = dlg_left + dialog_w;
     int dlg_bottom = dlg_top + dialog_h;
 
-    // background + title
+    /* 绘制背景、标题和提示文字。 */
     setlinecolor(RGB(120, 130, 150));
     setfillcolor(RGB(255, 255, 255));
     solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
@@ -759,32 +793,32 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
 
     settextstyle(18, 0, L"Segoe UI");
     RECT desc_rect = {dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84};
-    // 对话框文案与车辆表头保持一致。
+    /* 对话框文案与车辆表头保持一致。 */
     draw_text_rect(L"请选择违章记录：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    // Two-row layout: first row up to 4 options, second row remaining + cancel
+    /* 两行布局：第一行最多四个等级，余下等级与取消按钮放到第二行。 */
     int max_first = 4;
     int first_count = (count < max_first) ? count : max_first;
-    int remaining = count - first_count; // options placed in second row
+    int remaining = count - first_count; /* 第二行还需放置的等级数量。 */
 
     int btn_w = 110;
     int btn_h = 40;
     int spacing = 12;
 
-    // positions
+    /* 每行按自身总宽度分别居中，第二行还要多容纳一个取消按钮。 */
     int row1_total_w = first_count * btn_w + (first_count - 1) * spacing;
     int start_x_row1 = dlg_left + (dialog_w - row1_total_w) / 2;
-    int row1_y = dlg_top + 100; // upper row
+    int row1_y = dlg_top + 100; /* 第一行纵坐标。 */
 
-    int second_elements = (remaining > 0 ? remaining : 0) + 1; // remaining options + cancel
+    int second_elements = (remaining > 0 ? remaining : 0) + 1; /* 加 1 计入取消按钮。 */
     int row2_total_w = second_elements * btn_w + (second_elements - 1) * spacing;
     int start_x_row2 = dlg_left + (dialog_w - row2_total_w) / 2;
-    int row2_y = dlg_bottom - btn_h - 20; // lower row
+    int row2_y = dlg_bottom - btn_h - 20; /* 第二行纵坐标。 */
 
     Button btns[8];
     int idx = 0;
 
-    // first row
+    /* 绘制第一行；idx 同时是按钮数组下标和对应枚举值。 */
     for (int i = 0; i < first_count; ++i, ++idx)
     {
         btns[idx].rect.left = start_x_row1 + i * (btn_w + spacing);
@@ -809,7 +843,7 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
         }
     }
 
-    // second row: remaining options
+    /* 绘制第二行余下等级；opt 是 ViolationLevel 的实际整数值。 */
     for (int j = 0; j < remaining; ++j, ++idx)
     {
         int opt = first_count + j;
@@ -835,7 +869,7 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
         }
     }
 
-    // cancel on second row at the end
+    /* 把取消按钮追加到第二行末尾，以 -1 区分所有合法等级 0~5。 */
     btns[idx].rect.left = start_x_row2 + (second_elements - 1) * (btn_w + spacing);
     btns[idx].rect.top = row2_y;
     btns[idx].rect.right = btns[idx].rect.left + btn_w;
@@ -863,7 +897,7 @@ int prompt_violation_field(const wchar_t *title, ViolationLevel *level, Violatio
                         *level = (ViolationLevel)btns[i].id;
                         return 1;
                     }
-                    return 0; // cancel
+                    return 0; /* id=-1，用户取消。 */
                 }
             }
             if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom)
@@ -980,15 +1014,24 @@ void draw_footer_page(int page, int total_items)
     draw_text_rect(page_text, rect, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 }
 
-/* 顺序检查按钮矩形；命中返回 id，全部未命中返回 0（无操作）。 */
+/*
+ * 把一次鼠标点击转换成按钮操作编号。
+ *
+ * buttons 指向当前页面实际显示的按钮数组，count 是有效元素数，x/y 是
+ * EasyX 事件中的鼠标坐标。函数从前向后检查矩形，命中就返回 Button.id；
+ * 全部未命中返回 0，事件循环随后不会执行任何实际功能。
+ */
 int hit_test_buttons(const Button *buttons, int count, int x, int y)
 {
     int i;
+    /* &buttons[i].rect 取得第 i 个按钮矩形的地址，交给通用几何判断读取。 */
     for (i = 0; i < count; ++i)
     {
+        /* 找到第一个命中项就立即返回。正常布局中按钮不重叠，因此无需继续。 */
         if (point_in_rect(x, y, &buttons[i].rect))
             return buttons[i].id;
     }
+    /* 0 在各 Action 枚举中保留为“没有操作”，不会和真实按钮编号冲突。 */
     return 0;
 }
 
@@ -999,7 +1042,7 @@ PageRange make_page_range(int requested_page, int total_items)
 
     if (total_items < 0)
         total_items = 0;
-    result.total_pages = total_items == 0 ? 1 : (total_items + PAGE_SIZE - 1) / PAGE_SIZE;
+    result.total_pages = total_items == 0 ?         1 : (total_items + PAGE_SIZE - 1) / PAGE_SIZE;
     result.page = requested_page;
     if (result.page < 0)
         result.page = 0;

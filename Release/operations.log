@@ -1,8 +1,57 @@
-2026-09-10 15:19:47 | user=(none) | action=ADD_USER | target=xy | details=registered
-2026-09-10 15:19:53 | user=xy | action=LOGIN | target=xy | details=user login
-2026-09-10 15:21:19 | user=xy | action=ADD_CAR | target=123456 | details=xy
-2026-09-10 15:22:27 | user=xy | action=ADD_POLICY | target=123456 | details=交强险
-2026-09-10 15:23:37 | user=xy | action=ADD_CLAIM | target=123456 | details=无
-2026-09-10 16:55:32 | user=xy | action=LOGIN | target=xy | details=user login
-2026-09-10 19:03:10 | user=xy | action=LOGIN | target=xy | details=user login
-2026-09-10 22:41:08 | user=xy | action=LOGIN | target=xy | details=user login
+2026-09-12 00:05:09 | user=(none) | action=ADD_USER | target=nhr | details=registered
+2026-09-12 00:05:26 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 00:07:23 | user=nhr | action=ADD_CAR | target=京A88888 | details=nhr
+2026-09-12 00:09:08 | user=nhr | action=ADD_CAR | target=沪A86372 | details=nhr
+2026-09-12 11:07:50 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 11:11:52 | user=nhr | action=ADD_CAR | target=浙C123554 | details=nhr
+2026-09-12 11:12:52 | user=nhr | action=ADD_CAR | target=沪A77884 | details=nhr
+2026-09-12 11:14:33 | user=nhr | action=ADD_CAR | target=皖C5545 | details=nhr
+2026-09-12 11:14:44 | user=nhr | action=LOGOUT | target=nhr | details=user logout
+2026-09-12 11:15:07 | user=(none) | action=ADD_USER | target=xy | details=registered
+2026-09-12 11:15:19 | user=xy | action=LOGIN | target=xy | details=user login
+2026-09-12 11:16:45 | user=xy | action=ADD_CAR | target=津A4558 | details=xy
+2026-09-12 11:17:55 | user=xy | action=ADD_CAR | target=沪A11545 | details=xy
+2026-09-12 11:18:50 | user=xy | action=ADD_CAR | target=皖D54468 | details=xy
+2026-09-12 11:19:25 | user=xy | action=ADD_CAR | target=沪D4545 | details=xy
+2026-09-12 11:20:33 | user=xy | action=ADD_CAR | target=皖C41544 | details=xy
+2026-09-12 11:34:19 | user=xy | action=LOGIN | target=xy | details=user login
+2026-09-12 11:36:16 | user=xy | action=ADD_CAR | target=青A123456 | details=xy
+2026-09-12 11:36:19 | user=xy | action=LOGOUT | target=xy | details=user logout
+2026-09-12 11:36:29 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 11:36:38 | user=nhr | action=LOGOUT | target=nhr | details=user logout
+2026-09-12 11:38:05 | user=(none) | action=ADD_USER | target=车主1 | details=registered
+2026-09-12 11:38:25 | user=车主1 | action=LOGIN | target=车主1 | details=user login
+2026-09-12 11:39:39 | user=车主1 | action=ADD_CAR | target=沪A63521 | details=车主1
+2026-09-12 11:40:18 | user=车主1 | action=ADD_CAR | target=沪B46372 | details=车主1
+2026-09-12 11:41:28 | user=车主1 | action=ADD_CAR | target=沪A12345 | details=车主1
+2026-09-12 11:42:29 | user=车主1 | action=ADD_CAR | target=津A12457 | details=车主1
+2026-09-12 11:43:51 | user=车主1 | action=ADD_CAR | target=京A56743 | details=车主1
+2026-09-12 11:43:57 | user=车主1 | action=LOGOUT | target=车主1 | details=user logout
+2026-09-12 11:44:05 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-12 11:45:17 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 11:47:28 | user=nhr | action=ADD_POLICY | target=12345678 | details=交强险
+2026-09-12 11:48:09 | user=nhr | action=ADD_POLICY | target=87654321 | details=车损险
+2026-09-12 11:49:07 | user=nhr | action=ADD_POLICY | target=13145200 | details=三者险
+2026-09-12 11:50:48 | user=nhr | action=ADD_POLICY | target=12121212 | details=交强险
+2026-09-12 11:51:50 | user=nhr | action=ADD_POLICY | target=13131313 | details=交强险
+2026-09-12 11:52:16 | user=nhr | action=LOGOUT | target=nhr | details=user logout
+2026-09-12 11:52:25 | user=xy | action=LOGIN | target=xy | details=user login
+2026-09-12 11:52:56 | user=xy | action=ADD_POLICY | target=14141414 | details=车损险
+2026-09-12 11:54:45 | user=xy | action=ADD_POLICY | target=151515 | details=交强险
+2026-09-12 11:55:09 | user=xy | action=ADD_POLICY | target=16161616 | details=交强险
+2026-09-12 11:55:36 | user=xy | action=ADD_POLICY | target=17171717 | details=车损险
+2026-09-12 11:55:56 | user=xy | action=ADD_POLICY | target=18181818 | details=交强险
+2026-09-12 11:58:37 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 12:00:36 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 12:01:22 | user=车主1 | action=LOGIN | target=车主1 | details=user login
+2026-09-12 12:02:06 | user=车主1 | action=ADD_POLICY | target=19191919 | details=交强险
+2026-09-12 12:03:50 | user=车主1 | action=ADD_POLICY | target=20202020 | details=交强险
+2026-09-12 12:04:13 | user=车主1 | action=ADD_POLICY | target=21212121 | details=交强险
+2026-09-12 12:05:11 | user=车主1 | action=ADD_POLICY | target=22222222 | details=交强险
+2026-09-12 12:05:43 | user=车主1 | action=ADD_POLICY | target=23232323 | details=交强险
+2026-09-12 12:06:01 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-12 12:06:24 | user=admin | action=LOGOUT | target=admin | details=user logout
+2026-09-12 12:07:56 | user=nhr | action=LOGIN | target=nhr | details=user login
+2026-09-12 12:33:15 | user=nhr | action=LOGOUT | target=nhr | details=user logout
+2026-09-12 12:33:24 | user=admin | action=LOGIN | target=admin | details=user login
+2026-09-28 12:34:39 | user=admin | action=LOGIN | target=admin | details=user login

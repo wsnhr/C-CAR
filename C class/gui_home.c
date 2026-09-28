@@ -41,19 +41,29 @@ typedef struct HomeStatistics
     int cancelled_claims; /* 申请人在审核前撤销。 */
 } HomeStatistics;
 
-/* 绘制和命中检测都通过这里取得同一份按钮定义，避免坐标不一致。 */
+/*
+ * 根据当前身份选择首页左侧按钮数组，并通过 count 输出按钮数量。
+ *
+ * 返回的是三个 static 数组之一的首元素地址，不是新分配的内存，调用者不能
+ * free。绘制和命中检测都调用本函数，保证“看得见的按钮”和“点得到的按钮”
+ * 完全一致。count 使用指针，是因为函数的 return 已用来返回按钮数组地址。
+ */
 static const Button *home_buttons(const AppContext *ctx, int *count)
 {
+    /* 未登录时只开放注册、登录、忘记密码和退出。sizeof(整个数组) 除以
+       sizeof(一个元素) 可在编译期算出按钮个数，不需要手写容易过期的数字。 */
     if (!app_is_logged_in(ctx))
     {
         *count = (int)(sizeof(HOME_GUEST_BUTTONS) / sizeof(HOME_GUEST_BUTTONS[0]));
         return HOME_GUEST_BUTTONS;
     }
+    /* 管理员多一个“删除用户”按钮，所以必须返回专用数组及其对应数量。 */
     if (app_is_admin(ctx))
     {
         *count = (int)(sizeof(HOME_ADMIN_BUTTONS) / sizeof(HOME_ADMIN_BUTTONS[0]));
         return HOME_ADMIN_BUTTONS;
     }
+    /* 能执行到这里说明已经登录且不是管理员，因此使用普通用户按钮组。 */
     *count = (int)(sizeof(HOME_USER_BUTTONS) / sizeof(HOME_USER_BUTTONS[0]));
     return HOME_USER_BUTTONS;
 }
@@ -215,7 +225,7 @@ static void draw_home_sidebar(const AppContext *ctx, const Button *buttons, int 
                    DT_LEFT | DT_VCENTER | DT_SINGLELINE);
 
     for (i = 0; i < button_count; ++i)
-        draw_home_navigation_button(&buttons[i]);
+        draw_home_navigation_button(&buttons[i]);//能点的按钮在这里
 
     if (app_is_logged_in(ctx))
     {
@@ -408,7 +418,7 @@ static void draw_user_dashboard(const AppContext *ctx)
     wchar_t welcome[128] = {0};
 
     char_to_wchar(ctx->current_user, username, 64);
-    _snwprintf_s(welcome, 128, _TRUNCATE, L"%s，欢迎回来", username);
+    _snwprintf_s(welcome, 128, _TRUNCATE, L"%s，欢迎回来", username);//移接文本
 
     draw_home_panel(260, 110, 968, 260);
     draw_home_text(welcome, make_home_rect(290, 132, 930, 182), 28, RGB(30, 41, 59),
@@ -486,9 +496,12 @@ static void draw_guest_dashboard(void)
  */
 void draw_home(const AppContext *ctx, const GuiState *state)
 {
+    /* home_buttons 同时返回数组地址，并通过 &count 写回数组长度。 */
     int count;
     const Button *buttons = home_buttons(ctx, &count);
 
+    /* 侧栏和页头是所有身份共有的并列区域；下面三个 dashboard 互斥，只会
+       绘制一个。各绘制函数都只读 ctx/state，不修改登录或业务数据。 */
     draw_home_sidebar(ctx, buttons, count);
     draw_home_header(ctx, state);
     if (!app_is_logged_in(ctx))
@@ -499,12 +512,18 @@ void draw_home(const AppContext *ctx, const GuiState *state)
         draw_user_dashboard(ctx);
 }
 
-/* 弹出输入框、验证长度，再调用 user.c 的统一注册接口。 */
+/*
+ * 处理注册按钮：依次收集账号、密码、姓名和身份证，先在 GUI 层给出具体的
+ * 格式提示，再调用 user.c 的统一注册接口。成功后保存 users.txt 并写日志。
+ * 输入中的明文只保存在本函数局部数组，注册接口向 User 写入的是盐和哈希。
+ */
 static void handle_register(AppContext *ctx, GuiState *state)
 {
     /* {0} 把数组全部初始化为 0，因此即使提前返回也始终是合法空字符串。 */
     char username[20] = {0}, password[20] = {0};
     char real_name[REAL_NAME_CAPACITY] = {0}, id_card[ID_CARD_CAPACITY] = {0};
+    /* 每个 prompt 返回 0 都表示用户取消或提交空值；立即 return 可保证后续
+       业务函数没有被调用，ctx->user_count 也不会改变。 */
     if (!prompt_char_field(L"注册", L"请输入用户名：", username, sizeof(username), ""))
         return;
     if (!validate_string_len(username, (int)sizeof(((User *)0)->username)))
@@ -535,14 +554,18 @@ static void handle_register(AppContext *ctx, GuiState *state)
         set_message(state, L"身份证号格式或校验码不正确");
         return;
     }
+    /* 到这里四项输入已经完成快速校验。业务层还会重复关键规则，并以一次
+       调用完成盐、哈希和用户数组写入。 */
     if (register_user_account(ctx, username, password, real_name, id_card))
     {
+        /* register_user_account 只改内存，所以紧接着全量保存用户文件。 */
         save_users(ctx);
         set_message(state, L"注册成功");
         append_operation_log(ctx, "ADD_USER", username, "registered");
     }
     else
     {
+        /* 业务接口统一返回 0，GUI 再根据当前状态细分成对用户有帮助的提示。 */
         if (ctx->user_count >= MAX_USERS)
             set_message(state, L"用户数量已达上限");
         else if (strcmp(username, "admin") == 0 || user_exists(ctx, username))
@@ -564,6 +587,8 @@ static void handle_register(AppContext *ctx, GuiState *state)
  */
 static void handle_forgot_password(AppContext *ctx, GuiState *state)
 {
+    /* 所有敏感输入只存在于这次函数调用的栈内存中。confirm_password 只用于
+       防止输入失误，不会传给业务层或保存到文件。 */
     char username[USERNAME_CAPACITY] = {0};
     char real_name[REAL_NAME_CAPACITY] = {0};
     char id_card[ID_CARD_CAPACITY] = {0};
@@ -572,6 +597,8 @@ static void handle_forgot_password(AppContext *ctx, GuiState *state)
 
     if (!prompt_char_field(L"忘记密码", L"请输入用户名：", username, sizeof(username), ""))
         return;
+    /* admin 是内置账号，没有实名哈希；不存在或格式错误的账号统一显示相同
+       消息，避免根据提示判断某个用户名是否已经注册。 */
     if (!validate_string_len(username, USERNAME_CAPACITY) || strcmp(username, "admin") == 0 ||
         !user_exists(ctx, username))
     {
@@ -600,16 +627,21 @@ static void handle_forgot_password(AppContext *ctx, GuiState *state)
     if (!prompt_char_field(L"重置密码", L"请再次输入新密码：", confirm_password,
                            sizeof(confirm_password), ""))
         return;
+    /* strcmp 必须等于 0 才表示两次字符串内容完全一致。 */
     if (strcmp(new_password, confirm_password) != 0)
     {
         set_message(state, L"两次输入的新密码不一致");
         return;
     }
-    if (!reset_user_password(ctx, username, real_name, id_card, new_password))
+    /* 业务函数先验证实名哈希，再生成新盐和新密码哈希；返回 1 时内存中的
+       User 已经更新，但磁盘文件尚未更新。 */
+    if (!reset_user_password(ctx, username, real_name, id_card, new_password))//妈的这里怎么是先看新密码再看身份信息的
     {
         set_message(state, L"实名信息验证失败");
         return;
     }
+    /* 保存失败不能简单显示“重置失败”：内存密码已经改变，所以提示用户不要
+       关闭程序，以免内存和磁盘中的密码状态不一致。 */
     if (!save_users(ctx))
     {
         set_message(state, L"密码已修改，但保存失败，请勿关闭程序并联系管理员");
@@ -619,17 +651,48 @@ static void handle_forgot_password(AppContext *ctx, GuiState *state)
     set_message(state, L"密码已重置，请使用新密码登录");
 }
 
-/* 收集用户名和密码并更新 current_user；密码不会显示在状态消息中。 */
+/*
+ * 处理一次完整的“登录”交互。
+ *
+ * 调用关系：
+ *   首页登录按钮 -> handle_home_action(HOME_LOGIN) -> handle_login
+ *                 -> login_user_account_guarded -> login_user_account
+ *
+ * ctx   ：保存用户表、登录失败记录和 current_user。登录成功后，底层函数会
+ *         把用户名写入 ctx->current_user；下一轮 draw_home 会据此切换界面。
+ * state ：保存 GUI 状态消息。本函数把成功、失败或锁定提示写进 state，之后
+ *         由 draw_message_box 统一显示。
+ *
+ * 本函数属于 GUI 控制层，只负责“收集输入、检查输入形式、调用业务函数、
+ * 翻译业务结果”。它不遍历用户数组，也不直接计算密码哈希。
+ */
 static void handle_login(AppContext *ctx, GuiState *state)
 {
+    /*
+     * username 和 password 是本次登录临时使用的字符数组。
+     * ={0} 会把整个数组清零，保证即使用户输入较短，字符串末尾也有 '\0'。
+     * 它们只存在于本次函数调用期间，不会把明文密码写入 User 结构体或文件。
+     */
     char username[20] = {0}, password[20] = {0};
+    /* result 接收登录的主要结果；另外两个整数接收业务函数通过指针返回的
+       附加信息。只有失败或锁定时，GUI 才需要把它们显示给用户。 */
     LoginResult result;
     int remaining_attempts = 0;
     int remaining_seconds = 0;
+    /* message 用来把数字格式化进宽字符串，例如“还可以尝试 3 次”。
+       EasyX 绘图接口使用 wchar_t，因此这里不能直接使用 char 数组。 */
     wchar_t message[128] = {0};
+    /*
+     * prompt_char_field 会弹出 EasyX 输入框，并把输入结果从 wchar_t 转成
+     * 项目数据层使用的 char。sizeof(username) 把数组总容量一并传入，输入
+     * 函数便可防止越界。返回 0 表示用户取消，此时立即结束本次登录。
+     */
     if (!prompt_char_field(L"登录", L"请输入用户名：", username, sizeof(username), ""))
         return;
-    if (!validate_string_len(username, (int)sizeof(((User *)0)->username)))
+    /* 输入框负责容量安全，validate_string_len 继续检查业务上是否允许空串
+       以及长度是否能放进 User.username。((User *)0)->username 只用于取得成员
+       类型，sizeof 不会真的访问空指针。 */
+    if (!validate_string_len(username, (int)sizeof(((User *)0)->username)))//牛逼，这什么鬼东西
     {
         set_message(state, L"用户名长度不合法");
         return;
@@ -641,8 +704,16 @@ static void handle_login(AppContext *ctx, GuiState *state)
         set_message(state, L"密码长度不合法");
         return;
     }
+    /*
+     * &remaining_attempts 和 &remaining_seconds 是两个局部变量的地址。
+     * login_user_account_guarded 除了用 return 返回枚举结果，还可通过这两个
+     * 地址把剩余次数和锁定秒数写回来。这是 C 函数返回多个结果的常用方式。
+     */
     result = login_user_account_guarded(ctx, username, password, &remaining_attempts,
-                                        &remaining_seconds);
+                                        &remaining_seconds);//接受了一个节点，另外外两个信息指针带回，那两个确实是临时参数，但他们这一次的值不来自自己
+
+    /* 登录成功时，login_user_account 已经更新 ctx->current_user。这里仅生成
+       用户可见提示并记录操作日志，不需要再次设置登录状态。 */
     if (result == LOGIN_RESULT_SUCCESS)
     {
         if (app_is_admin(ctx))
@@ -654,6 +725,8 @@ static void handle_login(AppContext *ctx, GuiState *state)
     }
     if (result == LOGIN_RESULT_LOCKED)
     {
+        /* _snwprintf_s 把整数写入宽字符数组；_TRUNCATE 表示空间不足时安全
+           截断，而不是越过 message[128] 的边界。 */
         _snwprintf_s(message, 128, _TRUNCATE, L"登录暂时锁定，请在 %d 秒后重试",
                      remaining_seconds);
         set_message(state, message);
@@ -673,11 +746,16 @@ static void handle_logout(AppContext *ctx, GuiState *state)
 }
 
 /*
- * switch 根据 HomeAction 枚举分派操作。running 是指针，HOME_EXIT 通过
- * 把 running 所指向的值改为 0，会同步修改 gui_run 中的原变量并结束外层事件循环。
+ * 首页的统一按钮分派器。
+ *
+ * action 由 hit_test_home 根据鼠标坐标产生。注册、登录等操作调用专用函数；
+ * 进入其他页面时只修改 state->screen 和该页面的初始筛选状态；退出则通过
+ * running 指针修改 gui_run 中的循环开关。下一轮事件循环会按新状态重绘。
  */
 void handle_home_action(AppContext *ctx, GuiState *state, int action, int *running)
 {
+    /* switch 的每个 case 对应一个 HomeAction 枚举。break 防止执行完当前按钮
+       后继续落入下一个按钮分支。 */
     switch (action)
     {
     case HOME_REGISTER:
@@ -693,6 +771,8 @@ void handle_home_action(AppContext *ctx, GuiState *state, int action, int *runni
         handle_logout(ctx, state);
         break;
     case HOME_CARS:
+        /* 切换页面时同时清空上次查询。memset 清零字符串关键字和普通字段；
+           两个“任意”枚举值不一定为 0，所以必须在清零后单独赋值。 */
         state->screen = SCREEN_CARS;
         /* 每次进入车辆页都恢复默认范围：管理员看全部，普通用户只看本人。 */
         state->car_show_mine = app_is_admin(ctx) ? 0 : 1;
@@ -704,6 +784,7 @@ void handle_home_action(AppContext *ctx, GuiState *state, int action, int *runni
         set_message(state, L"已进入车辆管理");
         break;
     case HOME_INSURANCE:
+        /* 进入保单页前按今天重新计算 active，避免页面显示过期的有效状态。 */
         update_policy_active_status(ctx);
         state->screen = SCREEN_INSURANCE;
         state->insurance_view = VIEW_POLICY_LIST;
@@ -755,6 +836,8 @@ void handle_home_action(AppContext *ctx, GuiState *state, int action, int *runni
         break;
     }
     case HOME_EXIT:
+        /* running 指向 gui_run 的局部变量。写入 0 后，外层 while(running)
+           会在本轮结束时终止，随后关闭 EasyX 窗口。 */
         *running = 0;
         break;
     default:

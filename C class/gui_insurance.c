@@ -1,15 +1,14 @@
 ﻿#define _CRT_SECURE_NO_WARNINGS
 #include "gui_internal.h"
 
-/*
- * gui_insurance.c —— 保单与理赔页面
- *
- * 页面同时管理两类列表，通过
- * state->insurance_view 决定当前显示哪一种。
- *
- * 本文件收集输入和更新界面；保险关联校验、权限和金额计算由 insurance.c
 
- * 完成；成功后再调用 storage.c 的保存函数持久化。
+
+/*
+ * gui_insurance.c —— 保单与理赔页面的 GUI 控制层
+ *
+ * state->insurance_view 决定当前显示“保单列表”还是“理赔列表”。draw_* 只
+ * 读取数据并绘制；handle_* 收集输入并调用 insurance.c；hit_test_* 把鼠标
+ * 坐标转换成操作编号。权限最终还会在业务层检查，隐藏按钮不能代替鉴权。
  */
 
 /* 一种产品的三个相关属性放进同一个结构体，避免平行数组下标错位。 */
@@ -64,6 +63,8 @@ static const Button ADMIN_INSURANCE_BUTTONS[] = {
 /* 根据当前登录角色返回需要显示的按钮数组，并通过 count 返回数组长度。 */
 static const Button *insurance_buttons_for_context(const AppContext *ctx, int *count)
 {
+    /* 返回 static 数组首地址，并通过 count 输出元素数量；调用者不能 free。
+       绘制和命中检测都调用这里，隐藏的管理员/用户专属按钮不会被误点击。 */
     if (app_is_admin(ctx))
     {
         *count = (int)(sizeof(ADMIN_INSURANCE_BUTTONS) / sizeof(ADMIN_INSURANCE_BUTTONS[0]));
@@ -76,13 +77,17 @@ static const Button *insurance_buttons_for_context(const AppContext *ctx, int *c
 /* 把一个保单转换成表格宽字符串；?: 根据布尔状态选择显示文字。 */
 static void format_policy_line(const Policy *policy, wchar_t *line, size_t count)
 {
+    /* Policy 中的 char 字段先分别转换为宽字符。line/count 是调用者提供的
+       最终行缓冲区及容量，本函数把全部字段格式化到这一行。 */
     wchar_t policy_id[40], plate[32], owner[64], desc[96];
     char_to_wchar(policy->policy_id, policy_id, 40);
     char_to_wchar(policy->plate, plate, 32);
     char_to_wchar(policy->owner, owner, 64);
     char_to_wchar(policy->coverage_desc, desc, 96);
+    /* %-10s 表示左对齐并占至少 10 个字符位置，%.2f 保留两位小数；
+       _TRUNCATE 确保内容过长时不会越过 line 的容量。 */
     _snwprintf_s(line, count, _TRUNCATE, L"%-10s %-8s %-10s %.2f %.2f %-8s %s", policy_id, plate,
-                 owner, policy->coverage_limit, policy->premium, policy->active ? L"有效" : L"失效",
+                 owner, policy->coverage_limit, policy->premium, policy->active ? L"有效" : L"无效",
                  desc);
 }
 
@@ -118,6 +123,8 @@ static void format_claim_line(const Claim *claim, wchar_t *line, size_t count)
                  claim_status_text(claim->status), desc);
 }
 
+
+
 /*
  * 绘制当前保险视图。先取得用户可见数据的原数组下标，再按页填充 buffer，
  * lines 只保存各行缓冲区地址，最后统一交给 draw_rows。
@@ -135,9 +142,13 @@ void draw_insurance(const AppContext *ctx, const GuiState *state)
         draw_button(&buttons[i]);
     draw_content_panel();
 
+    /* 两个列表是互斥分支，共用页面外框和按钮，但拥有各自的页码、容量和
+       格式化函数。 */
     if (state->insurance_view == VIEW_POLICY_LIST)
     {
         draw_table_header(L"保单号    车牌    投保人      保额     保费   状态   描述");
+        /* buffer 真正保存每行字符；lines 只保存各行首地址，以符合 draw_rows
+           接收“字符串指针数组”的接口。二者生命周期都持续到本次绘制结束。 */
         const wchar_t *lines[PAGE_SIZE] = {0};
         wchar_t buffer[PAGE_SIZE][256] = {0};
         int indices[MAX_POLICIES] = {0};
@@ -152,6 +163,7 @@ void draw_insurance(const AppContext *ctx, const GuiState *state)
             draw_footer_page(0, 0);
             return;
         }
+        /* i 遍历筛选结果位置，indices[i] 才是 ctx->policies 中的真实下标。 */
         for (i = page.start; i < page.end; ++i)
         {
             const Policy *policy = &ctx->policies[indices[i]];
@@ -159,12 +171,13 @@ void draw_insurance(const AppContext *ctx, const GuiState *state)
             lines[row_count] = buffer[row_count];
             ++row_count;
         }
-        draw_rows(lines, row_count);
+        draw_rows(lines, row_count);//传入每行的首地址
         draw_footer_page(page.page, total);
     }
     else
     {
         draw_table_header(L"理赔号    保单号    车牌    申请人    申请(元)  批准(元)  状态   描述");
+        /* 理赔分支使用相同的“下标数组 + 行缓冲区 + 指针数组”绘制机制。 */
         const wchar_t *lines[PAGE_SIZE] = {0};
         wchar_t buffer[PAGE_SIZE][256] = {0};
         int indices[MAX_CLAIMS] = {0};
@@ -198,7 +211,7 @@ void draw_insurance(const AppContext *ctx, const GuiState *state)
  */
 static int prompt_product_choice(const wchar_t *title, int default_choice)
 {
-    // dialog dimensions inside content panel
+    /* 对话框尺寸固定，再根据内容区域边界计算居中坐标。 */
     int dialog_w = 560;
     int dialog_h = 300;
     int dlg_left = CONTENT_LEFT + ((CONTENT_RIGHT - CONTENT_LEFT) - dialog_w) / 2;
@@ -206,24 +219,24 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
     int dlg_right = dlg_left + dialog_w;
     int dlg_bottom = dlg_top + dialog_h;
 
-    // draw dialog background
+    /* 先画背景，再画标题和说明，后绘制的内容会覆盖在先绘制内容上方。 */
     setlinecolor(RGB(120, 130, 150));
     setfillcolor(RGB(255, 255, 255));
     solidrectangle(dlg_left, dlg_top, dlg_right, dlg_bottom);
-    // title
+    /* RECT 限定标题绘制区域，DT_VCENTER 让文字在矩形中垂直居中。 */
     settextstyle(22, 0, L"Segoe UI");
     settextcolor(RGB(35, 40, 50));
     RECT title_rect = {dlg_left + 16, dlg_top + 12, dlg_right - 16, dlg_top + 48};
     draw_text_rect(title, title_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    // description
+    /* 说明文字使用独立矩形，避免和标题或按钮重叠。 */
     settextstyle(18, 0, L"Segoe UI");
     RECT desc_rect = {dlg_left + 16, dlg_top + 48, dlg_right - 16, dlg_top + 84};
     draw_text_rect(L"请选择保险产品：", desc_rect, DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    // buttons: 产品按钮按 3 列网格排列，取消按钮居中放在最后一行
+    /* 产品按钮按 3 列网格排列；数组额外留一个元素作为取消按钮。 */
     const int COLS = 3;
-    int total_btn = PRODUCT_COUNT + 1; // last = cancel
+    int total_btn = PRODUCT_COUNT + 1; /* 最后一个元素是取消。 */
     int btn_w = 150;
     int btn_h = 44;
     int spacing = 24;
@@ -233,6 +246,7 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
     int row_pitch = btn_h + 12;
 
     Button btns[PRODUCT_COUNT + 1];
+    /* i / COLS 和 i % COLS 分别计算行列。产品 id 从 1 开始，便于用 0 表示取消。 */
     for (int i = 0; i < PRODUCT_COUNT; ++i)
     {
         int row = i / COLS;
@@ -245,7 +259,7 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
         btns[i].id = i + 1;
         draw_button(&btns[i]);
     }
-    // cancel button 居中放在产品下方一行
+    /* 取消按钮放在产品网格下方中央，id 固定为 0。 */
     int ci = PRODUCT_COUNT;
     int cancel_row = (PRODUCT_COUNT + COLS - 1) / COLS;
     btns[ci].rect.left = dlg_left + (dialog_w - btn_w) / 2;
@@ -256,7 +270,7 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
     btns[ci].id = 0;
     draw_button(&btns[ci]);
 
-    // 高亮默认产品，帮助用户确认当前选择。
+    /* 默认项只改变显示样式，并不会自动返回；用户仍需实际点击一个按钮。 */
     if (default_choice > 0 && default_choice <= PRODUCT_COUNT)
     {
         setfillcolor(RGB(230, 245, 255));
@@ -271,7 +285,7 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
 
     FlushBatchDraw();
 
-    // wait for click
+    /* 模态等待：只处理本对话框的鼠标点击，选中或取消后才返回外层页面。 */
     ExMessage msg;
     while (1)
     {
@@ -283,7 +297,7 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
             {
                 if (point_in_rect(mx, my, &btns[i].rect))
                 {
-                    // small visual feedback: redraw pressed button (optional)
+                    /* 返回前重画一次按下状态，并立即刷新，让用户看到点击反馈。 */
                     setlinecolor(RGB(80, 90, 110));
                     setfillcolor(RGB(220, 230, 240));
                     solidrectangle(btns[i].rect.left, btns[i].rect.top, btns[i].rect.right,
@@ -293,16 +307,17 @@ static int prompt_product_choice(const wchar_t *title, int default_choice)
                     draw_text_rect(btns[i].label, btns[i].rect,
                                    DT_CENTER | DT_VCENTER | DT_SINGLELINE);
                     FlushBatchDraw();
-                    // consume event and return id
+                    /* 返回 id 后局部按钮数组失效，但调用者只需要这个整数。 */
                     return btns[i].id;
                 }
             }
-            // click outside: treat as cancel
+            /* 点击对话框外等价于取消，避免没有明确确认却继续添加保单。 */
             if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom)
             {
                 return 0;
             }
         }
+        /* 没有鼠标消息时让出 CPU，防止 while(1) 忙等。 */
         Sleep(10);
     }
 }
@@ -351,13 +366,26 @@ static Date date_plus_months(Date base, int months)
     return base;
 }
 
+/*
+ * 处理“添加保单”的完整 GUI 流程。
+ *
+ * INS_ADD_POLICY -> handle_insurance_action -> handle_add_policy
+ *                -> add_policy_for_current_user
+ *
+ * 前半段只把输入保存在局部变量中，不修改 AppContext。全部字段通过校验并且
+ * 用户确认后，才调用业务函数一次性写入 ctx->policies；随后保存并写日志。
+ */
 static void handle_add_policy(AppContext *ctx, GuiState *state)
 {
+    /* char 数组用于业务结构体；wchar_t 数组只用于 EasyX 的确认文字。={0}
+       清空数组，使尚未写入内容的数组也一定是合法的空字符串。 */
     char policy_id[24] = {0};
     char plate[10] = {0};
     char owner[20] = {0};
     wchar_t policy_text[64] = {0}, plate_text[32] = {0}, owner_text[64] = {0};
     wchar_t product_text[128] = {0}, confirm_message[512] = {0};
+    /* 这两个变量是确认框中的预览值。业务层仍会重新计算，避免调用者通过
+       篡改 GUI 预览值来写入不符合规则的金额。 */
     double coverage_limit;
     double premium;
     if (!prompt_char_field(L"添加保单", L"请输入保单号：", policy_id, sizeof(policy_id), ""))
@@ -374,12 +402,16 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
         set_message(state, L"车牌格式不合法");
         return;
     }
+    /* 保单依赖车辆存在。find_car 返回车辆数组内部的地址，NULL 表示未找到；
+       它不是新分配的内存，所以本函数不能 free(car)。 */
     Car *car = find_car(ctx, plate);
     if (!car)
     {
         set_message(state, L"未找到该车牌");
         return;
     }
+    /* 管理员可以指定投保人；普通用户不能输入 owner，而是固定使用当前登录名。
+       业务层还会再次核对 owner 与车辆所有者，GUI 检查不是唯一安全边界。 */
     if (app_is_admin(ctx))
     {
         if (!prompt_char_field(L"添加保单", L"请输入投保人用户名：", owner, sizeof(owner), ""))
@@ -401,7 +433,7 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
         return;
     }
 
-    // Use clickable product selection
+    /* 返回值从 1 开始，减 1 后才是 INSURANCE_PRODUCTS 的数组下标。 */
     int choice = prompt_product_choice(L"选择保险产品", 1);
     if (choice <= 0 || choice > PRODUCT_COUNT)
     {
@@ -420,6 +452,8 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
     Date end = date_plus_months(start, 12);
     char product_desc[64] = {0};
     wchar_to_char(INSURANCE_PRODUCTS[choice - 1].name, product_desc, sizeof(product_desc));
+    /* PolicyTerms 把描述、日期和倍率作为一个整体传递，避免参数过多时顺序
+       传错。description 的文字会由业务层复制进 Policy，而不是保存该指针。 */
     PolicyTerms terms;
     terms.description = product_desc;
     terms.start_date = start;
@@ -449,6 +483,8 @@ static void handle_add_policy(AppContext *ctx, GuiState *state)
     /* 后续确认框、保单和日志都使用车辆记录中的规范车牌。 */
     copy_text(plate, sizeof(plate), car->plate);
 
+    /* &terms 是结构体地址。业务函数返回 1 时，保单数组和 policy_count 已经
+       更新；这时才保存文件并写成功日志。返回 0 时不执行这些副作用。 */
     if (add_policy_for_current_user(ctx, policy_id, plate, owner, &terms))
     {
         save_policies(ctx);
@@ -471,6 +507,8 @@ static void handle_delete_policy(AppContext *ctx, GuiState *state)
 
     if (!prompt_char_field(L"删除保单", L"请输入保单号：", policy_id, sizeof(policy_id), ""))
         return;
+    /* 权限感知查找：存在但不属于普通用户的保单也返回 NULL。返回地址只用于
+       删除前展示，真正删除后数组会移动，不能再使用该指针。 */
     policy = find_visible_policy(ctx, policy_id);
     if (!policy)
     {
@@ -491,6 +529,7 @@ static void handle_delete_policy(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 删除保单会级联删除关联理赔，所以成功后必须同时保存两个文件。 */
     if (remove_policy_for_current_user(ctx, policy_id))
     {
         save_policies(ctx);
@@ -508,6 +547,7 @@ static void handle_find_policy(AppContext *ctx, GuiState *state)
     char policy_id[24] = {0};
     if (!prompt_char_field(L"查询保单", L"请输入保单号：", policy_id, sizeof(policy_id), ""))
         return;
+    /* const Policy* 表明这里只读取查询结果来组织消息，不允许借此修改保单。 */
     const Policy *policy = find_visible_policy(ctx, policy_id);
     if (!policy)
     {
@@ -516,8 +556,8 @@ static void handle_find_policy(AppContext *ctx, GuiState *state)
     }
     wchar_t id_t[40], plate_t[32], owner_t[64], desc_t[96], message[512];
     char_to_wchar(policy->policy_id, id_t, 40);
-    char_to_wchar(policy->plate, plate_t, 32);
     char_to_wchar(policy->owner, owner_t, 64);
+    char_to_wchar(policy->plate, plate_t, 32);
     char_to_wchar(policy->coverage_desc, desc_t, 96);
     _snwprintf_s(message, 512, _TRUNCATE,
                  L"保单:%s  车牌:%s  投保人:%s  保额:%.2f  保费:%.2f  状态:%s\n"
@@ -531,6 +571,8 @@ static void handle_find_policy(AppContext *ctx, GuiState *state)
 /* 收集理赔资料并调用权限包装接口；批准金额由 insurance.c 自动计算。 */
 static void handle_add_claim(AppContext *ctx, GuiState *state)
 {
+    /* 输入阶段使用 char 局部数组；确认摘要使用转换后的 wchar_t 数组。所有
+       明文说明只在确认后才交给业务层复制。 */
     char claim_id[24] = {0}, policy_id[24] = {0}, desc[256] = {0}, claimant[20] = {0};
     double amount = 0.0;
     wchar_t claim_text[64] = {0}, policy_text[64] = {0}, claimant_text[64] = {0};
@@ -563,6 +605,8 @@ static void handle_add_claim(AppContext *ctx, GuiState *state)
         set_message(state, L"理赔说明长度不合法");
         return;
     }
+    /* 管理员可以代已存在用户提交；普通用户申请人固定为 current_user。
+       关联保单所有权和有效状态仍由 add_claim_for_current_user 检查。 */
     if (app_is_admin(ctx))
     {
         if (!prompt_char_field(L"新增理赔", L"请输入申请人用户名：", claimant, sizeof(claimant),
@@ -594,6 +638,7 @@ static void handle_add_claim(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 返回 1 时 Claim 已写入内存并计算预计批准金额，此时才保存并切换列表。 */
     if (add_claim_for_current_user(ctx, claim_id, policy_id, claimant, desc, amount))
     {
         save_claims(ctx);
@@ -619,6 +664,7 @@ static void handle_cancel_claim(AppContext *ctx, GuiState *state)
     if (!prompt_char_field(L"撤销理赔", L"请输入要撤销的理赔单号：", claim_id,
                            sizeof(claim_id), ""))
         return;
+    /* 先查可见记录并检查待审核状态，减少无效确认框；业务层仍会重复检查。 */
     claim = find_visible_claim(ctx, claim_id);
     if (!claim)
     {
@@ -642,6 +688,7 @@ static void handle_cancel_claim(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 撤销只修改 status，不删除数组元素，因此只需保存 claims.txt。 */
     if (cancel_claim_for_current_user(ctx, claim_id))
     {
         save_claims(ctx);
@@ -692,6 +739,7 @@ static void handle_review_claim(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 比较表达式结果是 0 或 1，正好转换为业务接口需要的 approve 标志。 */
     approve = choice[0] == '1';
     char_to_wchar(claim->claim_id, claim_text, 64);
     _snwprintf_s(confirm_message, 512, _TRUNCATE,
@@ -706,6 +754,7 @@ static void handle_review_claim(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 业务层负责最终管理员鉴权和状态转换，GUI 只在成功后保存与记日志。 */
     if (review_claim_for_current_user(ctx, claim_id, approve))
     {
         save_claims(ctx);
@@ -754,6 +803,7 @@ static void handle_settle_claim(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 结案操作只把状态从 APPROVED 改为 SETTLED，不会在本程序中进行转账。 */
     if (settle_claim_for_current_user(ctx, claim_id))
     {
         save_claims(ctx);
@@ -767,16 +817,25 @@ static void handle_settle_claim(AppContext *ctx, GuiState *state)
 }
 
 /*
- * 分派 InsuranceAction。page 是 int*：根据当前视图指向 policy_page 或
+ * 保单理赔页的统一按钮分派器。
  *
- * claim_page，之后同一套翻页代码可修改正确的页码成员。
+ * action 来自 hit_test_insurance 返回的 InsuranceAction。增删查等编号交给
+ * 对应 handle_* 函数；列表切换和翻页只修改 GuiState；INS_BACK 把当前页面
+ * 改回首页。函数不处理鼠标坐标，也不负责绘制。
+ *
+ * page 是 int*：显示保单时指向 state->policy_page，显示理赔时指向
+ * state->claim_page。后面的同一套翻页代码通过 *page 修改真正的页码成员。
  */
 void handle_insurance_action(AppContext *ctx, GuiState *state, int action)
 {
+    /* ?: 是条件运算符。它根据当前列表选择总记录数和页码地址，避免分别写
+       两套内容完全相同的分页逻辑。 */
     int total = state->insurance_view == VIEW_POLICY_LIST ? ctx->policy_count : ctx->claim_count;
     int *page =
         state->insurance_view == VIEW_POLICY_LIST ? &state->policy_page : &state->claim_page;
     PageRange range = make_page_range(*page, total);
+    /* switch 把离散的操作编号分派到对应功能。每个 case 末尾的 break 防止
+       程序继续落入下一个 case。 */
     switch (action)
     {
     case INS_ADD_POLICY:
@@ -820,10 +879,12 @@ void handle_insurance_action(AppContext *ctx, GuiState *state, int action)
             set_message(state, L"只有管理员可以结案理赔");
         break;
     case INS_PREV:
+        /* *page 取得指针指向的真实页码。先检查边界，保证页码不会变成负数。 */
         if (*page > 0)
             (*page)--;
         break;
     case INS_NEXT:
+        /* 当前页从 0 开始，因此“当前页 + 1 < 总页数”才说明存在下一页。 */
         if (*page + 1 < range.total_pages)
             (*page)++;
         break;

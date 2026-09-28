@@ -22,6 +22,9 @@ static const Button CAR_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_
                                      {{770, 610, 850, 650}, L"上一页", CAR_PREV},
                                      {{870, 610, 950, 650}, L"下一页", CAR_NEXT}};
 
+
+
+
 /*
  * 根据当前界面状态决定列表的数据来源。查询开启时使用多条件筛选，否则使用
  * 原来的“全部/我的车辆”列表。绘制和翻页都调用本函数，保证两处数量一致。
@@ -29,8 +32,11 @@ static const Button CAR_BUTTONS[] = {{{20, 120, 200, 160}, L"添加车辆", CAR_
 static int collect_displayed_car_indices(const AppContext *ctx, const GuiState *state,
                                          int *indices, int max_count)
 {
+    /* count 是实际写入 indices 的下标数量，而不是 ctx 中的车辆总数。 */
     int count;
 
+    /* 查询开启时使用 state 中保存的多个条件；否则只进行身份可见性过滤。
+       两个下层函数都把符合项的 ctx->cars 下标写入 indices。 */
     if (state->car_search_active)
         count = collect_matching_car_indices(ctx, state->car_show_mine, &state->car_search, indices,
                                              max_count);
@@ -52,6 +58,8 @@ static const wchar_t *CAR_COLUMN_TITLES[] = {L"车牌", L"品牌", L"型号", L"
 
 static void draw_car_cell(const wchar_t *text, int column, int top, UINT alignment)
 {
+    /* 第 column 列的左右边界来自相邻两个 CAR_COLUMN_X，左右各缩进 4 像素，
+       避免文字紧贴分隔位置。column 必须是 0~7。 */
     RECT rect = {CAR_COLUMN_X[column] + 4, top, CAR_COLUMN_X[column + 1] - 4,
                  top + ROW_HEIGHT - 4};
     draw_text_rect(text, rect,
@@ -73,9 +81,12 @@ static void draw_car_table_header(void)
 /* 一辆车逐列绘制，价格右对齐，其余字段不会越过本列矩形。 */
 static void draw_car_row(const Car *car, int row)
 {
+    /* row 是当前页内的行号，不是车辆在 ctx->cars 中的原始下标。 */
     int top = CONTENT_TOP + 55 + row * ROW_HEIGHT;
     wchar_t plate[32], brand[64], model[64], owner[64], date[32], price[40];
 
+    /* 结构体文本是 char，EasyX 绘制使用 wchar_t；日期和价格则需要先由
+       _snwprintf_s 格式化成宽字符串。 */
     char_to_wchar(car->plate, plate, 32);
     char_to_wchar(car->brand, brand, 64);
     char_to_wchar(car->model, model, 64);
@@ -84,6 +95,7 @@ static void draw_car_row(const Car *car, int row)
                  car->purchase_date.month, car->purchase_date.day);
     _snwprintf_s(price, 40, _TRUNCATE, L"%.2f", car->purchase_price);
 
+    /* row % 2 在偶数行为 0、奇数行为 1，据此交替背景色形成斑马纹。 */
     setlinecolor(RGB(238, 242, 247));
     setfillcolor(row % 2 == 0 ? RGB(250, 252, 255) : RGB(244, 248, 252));
     solidrectangle(CONTENT_LEFT + 12, top, CONTENT_RIGHT - 12, top + ROW_HEIGHT - 4);
@@ -114,12 +126,15 @@ void draw_cars(const AppContext *ctx, const GuiState *state)
     draw_message_box(state);
     draw_content_panel();
     draw_car_table_header();
-    int indices[MAX_CARS] = {0};
+    /* indices 保存过滤、查询和排序后的原数组下标。分页作用于 indices，而不
+       改动 ctx->cars，因此显示顺序与真实存储顺序彼此独立。 */
+    int indices[MAX_CARS] = {0};//这就有意义了
     int total = collect_displayed_car_indices(ctx, state, indices, MAX_CARS);
     PageRange page = make_page_range(state->car_page, total);
     int line_count = 0;
     for (i = page.start; i < page.end; ++i)
     {
+        /* indices[i] 是 ctx->cars 的真实下标，line_count 是当前页显示行号。 */
         draw_car_row(&ctx->cars[indices[i]], line_count);
         ++line_count;
     }
@@ -148,6 +163,8 @@ static const wchar_t *const PROVINCES[] = {
  */
 static int prompt_province_choice(const wchar_t *title)
 {
+    /* 网格布局先由列数、按钮大小和间距推导总宽高，再反推居中位置。
+       (数量 + 列数 - 1) / 列数是整数向上取整。 */
     const int COLS = 8;
     const int btn = 40;
     const int spacing = 8;
@@ -178,7 +195,7 @@ static int prompt_province_choice(const wchar_t *title)
     draw_text_rect(L"请选择车牌所属地区（点击外空白处取消）：", desc_rect,
                    DT_LEFT | DT_SINGLELINE | DT_VCENTER);
 
-    /* 网格按钮 */
+    /* i / COLS 得到行号，i % COLS 得到列号，把一维数组映射为二维网格。 */
     for (i = 0; i < PROVINCE_COUNT; ++i)
     {
         int row = i / COLS;
@@ -194,7 +211,7 @@ static int prompt_province_choice(const wchar_t *title)
 
     FlushBatchDraw();
 
-    /* 等待鼠标点击 */
+    /* 模态循环：本函数返回前，外层 gui_run 暂时不会处理其他页面按钮。 */
     ExMessage msg;
     while (1)
     {
@@ -202,6 +219,7 @@ static int prompt_province_choice(const wchar_t *title)
         {
             int mx = msg.x;
             int my = msg.y;
+            /* 命中时返回按钮 id；这里 id 与 PROVINCES 的数组下标完全相同。 */
             for (i = 0; i < PROVINCE_COUNT; ++i)
             {
                 if (point_in_rect(mx, my, &btns[i].rect))
@@ -210,24 +228,38 @@ static int prompt_province_choice(const wchar_t *title)
             if (mx < dlg_left || mx > dlg_right || my < dlg_top || my > dlg_bottom)
                 return -1;
         }
+        /* 无消息时短暂让出 CPU，避免 while(1) 空转占满一个核心。 */
         Sleep(10);
     }
 }
 
-/* 按顺序收集和验证字段，再调用带权限检查的车辆新增接口。 */
+/*
+ * 处理“添加车辆”按钮的一次完整交互。
+ *
+ * CAR_ADD -> handle_car_action -> handle_add_car
+ *         -> add_car_for_current_user -> add_car
+ *
+ * 所有输入先保存在局部变量里；取消或校验失败会提前 return，此时 ctx 不变。
+ * 用户确认后才调用业务层写入车辆数组，成功后再保存和记录日志。
+ */
 static void handle_add_car(AppContext *ctx, GuiState *state)
 {
+    /* char 数组用于业务数据，wchar_t 数组用于 EasyX 确认框。={0} 会把数组
+       全部清零，使它们从一开始就是以 '\0' 结尾的空字符串。 */
     char plate[10] = {0}, brand[20] = {0}, model[20] = {0}, owner[20] = {0};
     VehicleType vehicle_type = VEHICLE_TYPE_SMALL_CAR;
     ViolationLevel violation = VIOLATION_NONE;
     Date date = {0};
     wchar_t plate_text[32] = {0}, brand_text[64] = {0}, model_text[64] = {0};
     wchar_t owner_text[64] = {0}, confirm_message[512] = {0};
+    /* 为日期选择框准备初始值。prompt_date_field 接收 &date，并把用户选择的
+       年、月、日直接写回这个局部结构体。 */
     date.year = date_today().year;
     date.month = 1;
     date.day = 1;
     double price = 0.0;
     /* 先选择地区汉字，再输入“字母 + 编号”，最后拼接成完整车牌。 */
+    /* 返回省份数组下标；用户点击对话框外取消时返回 -1。 */
     int province_idx = prompt_province_choice(L"选择车牌地区");
     if (province_idx < 0)
     {
@@ -290,6 +322,8 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
         set_message(state, L"价格不合法（必须在 0 - 1e9 范围内）");
         return;
     }
+    /* 管理员可以为指定的已注册用户添加车辆；普通用户的 owner 强制复制
+       current_user，不能通过输入框冒充其他车主。业务层仍会再次鉴权。 */
     if (app_is_admin(ctx))
     {
         if (!prompt_char_field(L"添加车辆", L"请输入车主用户名：", owner, sizeof(owner), ""))
@@ -326,6 +360,8 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 返回 1 说明 ctx->cars 和 car_count 已经更新，这时才把内存状态保存到
+       cars.txt。失败时不保存，也不写一条虚假的成功日志。 */
     if (add_car_for_current_user(ctx, plate, brand, model, owner, vehicle_type, violation, date,
                                  price))
     {
@@ -345,6 +381,8 @@ static void handle_add_car(AppContext *ctx, GuiState *state)
  */
 static void handle_find_car(AppContext *ctx, GuiState *state)
 {
+    /* condition 是本次编辑的查询副本；只有所有输入完成后才赋给 state。
+       用户中途取消不会破坏上一次仍在使用的查询条件。 */
     CarSearchCondition condition;
     char vehicle_type_text[2] = {0};
     char violation_text[2] = {0};
@@ -352,9 +390,13 @@ static void handle_find_car(AppContext *ctx, GuiState *state)
     int total;
     int indices[MAX_CARS] = {0};
 
+    /* 清零让所有关键字默认成为空串，即“不限制”；两个枚举的 ANY 值需要
+       单独赋值，因为它们不一定等于 memset 得到的 0。 */
     memset(&condition, 0, sizeof(condition));
     condition.vehicle_type = CAR_VEHICLE_TYPE_ANY;
     condition.violation = CAR_VIOLATION_ANY;
+    /* 已有查询时用其作为默认值，用户可以在原条件上继续修改。结构体赋值会
+       复制其中全部数组和普通成员，不是只复制地址。 */
     if (state->car_search_active)
         condition = state->car_search;
 
@@ -426,6 +468,8 @@ static void handle_find_car(AppContext *ctx, GuiState *state)
         condition.violation = CAR_VIOLATION_ANY;
     }
 
+    /* 到这里所有输入均合法，才一次性提交到 GuiState。查询只改变显示规则，
+       不会修改、删除或重排 ctx->cars。新查询总是从第一页显示。 */
     state->car_search = condition;
     state->car_search_active = 1;
     state->car_show_mine = app_is_admin(ctx) ? 0 : 1;
@@ -465,6 +509,7 @@ static void handle_sort_cars(GuiState *state)
         return;
     }
 
+    /* 输入是字符 '1'~'3'，减去 '0' 得到整数，再显式转换成枚举类型。 */
     field = (CarSortField)(field_text[0] - '0');
     if (!prompt_char_field(L"车辆排序", L"请选择方向：1=升序，2=降序：", direction_text,
                            sizeof(direction_text), "1"))
@@ -478,6 +523,8 @@ static void handle_sort_cars(GuiState *state)
     field_name = field == CAR_SORT_VIOLATION
                      ? L"违章等级"
                      : (field == CAR_SORT_PURCHASE_DATE ? L"购入日期" : L"购入价格");
+    /* 这里只保存排序规则。真正的排序发生在下一次收集显示下标时，并且只
+       排列下标数组，不改变车辆文件或 ctx->cars 的登记顺序。 */
     state->car_sort_field = field;
     state->car_sort_ascending = direction_text[0] == '1';
     state->car_page = 0;
@@ -497,6 +544,7 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
         set_message(state, L"车牌格式不合法");
         return;
     }
+    /* 使用权限感知查找：普通用户即使输入了他人真实车牌也会得到 NULL。 */
     const Car *car = find_visible_car(ctx, plate);
     if (!car)
     {
@@ -504,6 +552,7 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
         return;
     }
     char brand[20] = {0}, model[20] = {0};
+    /* 把原字段复制到局部变量并作为输入框默认值；用户确认前不直接改 car。 */
     VehicleType vehicle_type = car->vehicle_type;
     ViolationLevel violation = car->violation;
     Date date = car->purchase_date;
@@ -542,6 +591,7 @@ static void handle_modify_car(AppContext *ctx, GuiState *state)
         set_message(state, L"价格不合法（必须在 0 - 1e9 范围内）");
         return;
     }
+    /* 所有新字段验证完后一次提交。返回 1 才保存，避免把失败操作写进文件。 */
     if (modify_car_for_current_user(ctx, plate, brand, model, vehicle_type, violation, date,
                                     price))
     {
@@ -568,6 +618,8 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
         set_message(state, L"车牌格式不合法");
         return;
     }
+    /* 先取得只读车辆地址，用于权限检查和组成确认摘要。删除前不要继续保存
+       这个指针，因为数组左移后原地址可能代表另一辆车。 */
     car = find_visible_car(ctx, plate);
     if (!car)
     {
@@ -590,6 +642,8 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
         return;
     }
 
+    /* 业务删除会级联清理关联保单和理赔，因此成功后必须把三个文件一起保存，
+       才能让磁盘上的关联关系与内存一致。 */
     if (remove_car_for_current_user(ctx, plate))
     {
         save_cars(ctx);
@@ -602,12 +656,22 @@ static void handle_delete_car(AppContext *ctx, GuiState *state)
         set_message(state, L"删除车辆失败");
 }
 
-/* 根据 CarAction 执行业务操作、切换筛选、翻页或返回首页。 */
+/*
+ * 车辆页的统一按钮分派器。
+ *
+ * action 是 hit_test_cars 根据鼠标坐标返回的 CarAction。CRUD、查询和排序
+ * 转交给专用处理函数；翻页只改 state->car_page；CAR_BACK 把 screen 改回
+ * SCREEN_HOME。下一轮 draw_ui 会读取新状态并自动重绘正确页面。
+ */
 void handle_car_action(AppContext *ctx, GuiState *state, int action)
 {
+    /* 先按照当前搜索和排序设置收集下标，以真实结果数计算页数。这里不会
+       调整 ctx->cars 的排列，indices 只是列表视图使用的间接索引。 */
     int indices[MAX_CARS] = {0};
     int total = collect_displayed_car_indices(ctx, state, indices, MAX_CARS);
     PageRange page = make_page_range(state->car_page, total);
+    /* 每个 case 对应 gui_internal.h 中的一个 CarAction 枚举值。break 用来
+       结束当前分支，防止继续执行下一个按钮的代码。 */
     switch (action)
     {
     case CAR_ADD:
@@ -626,10 +690,12 @@ void handle_car_action(AppContext *ctx, GuiState *state, int action)
         handle_delete_car(ctx, state);
         break;
     case CAR_PREV:
+        /* 页码从 0 开始；只有当前页大于 0 才能向前翻。 */
         if (state->car_page > 0)
             state->car_page--;
         break;
     case CAR_NEXT:
+        /* 保证增加后的页码仍小于总页数，避免绘制一个不存在的空白页。 */
         if (state->car_page + 1 < page.total_pages)
             state->car_page++;
         break;

@@ -39,7 +39,10 @@ typedef struct Button
     int id;               /* 点击后交给事件处理函数的操作编号。 */
 } Button;
 
-/* enum 为整数常量取名；未指定值的成员会从前一项开始依次加 1。 *///为什么不用宏
+/*
+ * enum 为一组相关整数取有类型含义的名字。相比多个 #define，调试器能直接
+ * 显示枚举成员，编译器也更容易提示类型问题；未指定值会从 0 依次加 1。
+ */
 typedef enum
 {
     SCREEN_HOME,
@@ -95,7 +98,7 @@ typedef struct GuiState
 {
     Screen screen;                /* 当前一级页面。 */
     int car_page;                 /* 车辆页码，从 0 开始。 */
-    int policy_page;              /* 保单页码。 *///？？？？？？？？？？？？？？？？？？？？？？？？？？？总还是现在
+    int policy_page;              /* 保单列表当前页码，从 0 开始，不是总页数。 */
     int claim_page;               /* 理赔页码。 */
     int car_show_mine;            /* 0=全部可见，1=只看本人。 */
     int car_search_active;         /* 0=普通列表，1=按 car_search 筛选列表。 */
@@ -106,7 +109,11 @@ typedef struct GuiState
     wchar_t message[512];         /* 底部提示消息缓冲区。 */
 } GuiState;
 
-/* 分页计算结果：page 为修正后的页码，start/end 为左闭右开下标范围。 *////????????????????????下标
+/*
+ * 分页计算结果。page 是边界修正后的当前页；total_pages 是总页数；start 是
+ * 本页第一条在“筛选结果下标数组”中的位置；end 是后一位置，不属于本页。
+ * 例如 start=12、end=15 表示遍历下标 12、13、14，即左闭右开 [12,15)。
+ */
 typedef struct PageRange
 {
     int page;
@@ -115,7 +122,10 @@ typedef struct PageRange
     int end;
 } PageRange;
 
-/* 以下公共工具实现在 gui_common.c。dest_count/count 一般表示数组容量。 *///？？？？？？？？？？？？？？？？？？？能少一点吗
+/*
+ * 以下公共工具实现在 gui_common.c。dest_count/count 表示调用者提供的数组
+ * 容量，工具函数依靠它限制写入范围，避免 char/wchar_t 缓冲区越界。
+ */
 void set_message(GuiState *state, const wchar_t *text);
 void char_to_wchar(const char *src, wchar_t *dest, int dest_count);
 void wchar_to_char(const wchar_t *src, char *dest, int dest_count);
